@@ -1,0 +1,15 @@
+[Unit]
+Description=复盘终端 每日行情数据更新
+Documentation=file:/opt/fupan/deploy/README.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/fupan
+Environment=APP_DIR=/opt/fupan
+# 需要 webhook 告警时取消注释并填写地址
+# Environment=ALERT_WEBHOOK=https://example.com/hooks/fupan
+ExecStart=/opt/fupan/deploy/fupan-update.sh
+TimeoutStartSec=1800
+Nice=10

@@ -1,0 +1,13 @@
+[Unit]
+Description=复盘终端 交易日收盘后触发数据更新（15:10）
+
+[Timer]
+# 周一到周五 15:10 触发；脚本自身会校验当日是否交易日、是否已收盘
+OnCalendar=Mon..Fri 15:10
+# 机器关机错过触发时，开机后补跑
+Persistent=true
+RandomizedDelaySec=120
+Unit=fupan-update.service
+
+[Install]
+WantedBy=timers.target

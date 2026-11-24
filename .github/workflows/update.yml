@@ -1,0 +1,66 @@
+name: 每日更新行情数据
+
+# 北京时间 15:10（UTC 07:10）触发；GitHub Actions 的 cron 固定用 UTC。
+# 周一到周五运行；法定节假日也会跑，但取到的仍是最近交易日数据，没有变化就不会产生提交。
+on:
+  schedule:
+    - cron: '10 7 * * 1-5'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 准备 Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: 安装依赖
+        run: pip install --quiet requests
+
+      - name: 抓取并构建数据
+        run: python scripts/market_update.py
+
+      - name: 提交更新
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add app/data.js app/data.json data/raw
+          if git diff --staged --quiet; then
+            echo "数据无变化，跳过提交"
+          else
+            git commit -m "data: 更新至 $(python -c "import json;print(json.load(open('app/data.json',encoding='utf-8'))['dataDate'])")"
+            git push
+          fi
+
+  deploy:
+    needs: update
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: 检出最新提交
+        uses: actions/checkout@v4
+
+      - name: 打包站点
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: app
+
+      - name: 发布到 GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

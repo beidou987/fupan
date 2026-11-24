@@ -1,0 +1,58 @@
+# 复盘终端 · Nginx 静态托管示例
+#
+# 站点根目录就是 app/，不需要后端；行情数据由定时任务改写 app/data.js。
+# 证书用 certbot 申请，或替换成你自己的证书路径。
+
+server {
+    listen 80;
+    server_name fupan.example.com;
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl http2;
+    server_name fupan.example.com;
+
+    ssl_certificate     /etc/letsencrypt/live/fupan.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/fupan.example.com/privkey.pem;
+
+    root /opt/fupan/app;
+    index index.html;
+
+    # PWA 必需：webmanifest 的 MIME 类型
+    types {
+        application/manifest+json  webmanifest;
+        text/javascript          js;
+        text/css                 css;
+        image/png                png;
+    }
+    default_type application/octet-stream;
+
+    # 私有使用：可选口令保护（htpasswd -c /etc/nginx/.htpasswd yourname）
+    # auth_basic           "复盘终端";
+    # auth_basic_user_file /etc/nginx/.htpasswd;
+
+    gzip on;
+    gzip_types text/html text/css text/javascript application/json application/manifest+json image/svg+xml;
+    gzip_min_length 1024;
+
+    # 页面与数据：不做强缓存，保证每日更新可见
+    location = /index.html {
+        add_header Cache-Control "no-cache";
+    }
+    location = /data.js {
+        add_header Cache-Control "no-store";
+    }
+    location = /sw.js {
+        add_header Cache-Control "no-store";
+    }
+    location / {
+        try_files $uri $uri/ /index.html;
+        add_header Cache-Control "no-cache";
+    }
+
+    # 图标可长缓存
+    location /icons/ {
+        expires 7d;
+    }
+}

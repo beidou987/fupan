@@ -1,0 +1,17 @@
+# 运行态产物
+state/
+
+# 抓取中间文件与调试产物
+.tmp/
+*.tmp
+*.bak
+__pycache__/
+*.pyc
+
+# 本地预览与截图
+preview/*.png
+page-*.yml
+
+# 系统文件
+.DS_Store
+Thumbs.db

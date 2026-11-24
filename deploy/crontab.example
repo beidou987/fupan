@@ -1,0 +1,10 @@
+# 复盘终端 · cron 写法（与 systemd timer 二选一）
+#
+# 安装：crontab -e 后粘贴下面一行，路径按实际部署目录调整。
+# 交易日 15:10 触发；非交易日运行会因取不到当日数据而失败，站点保留上一交易日快照。
+# 若希望非交易日完全静默，可把 market_update.py 的退出码 1 视为正常（见 README「告警」）。
+
+10 15 * * 1-5  APP_DIR=/opt/fupan /opt/fupan/deploy/fupan-update.sh
+
+# 可选：每周日 03:20 清理 30 天前的备份
+20 3 * * 0  find /opt/fupan/state/backup -type f -mtime +30 -delete
