@@ -59,6 +59,9 @@ jobs:
           ref: main
           fetch-depth: 0
 
+      - name: 配置 Pages
+        uses: actions/configure-pages@v5
+
       - name: 打包站点
         uses: actions/upload-pages-artifact@v3
         with:
