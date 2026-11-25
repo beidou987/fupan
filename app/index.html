@@ -782,6 +782,18 @@
     });
     document.title = VIEW_TITLES[name] + ' · 复盘终端';
     window.scrollTo({ top: 0, behavior: 'auto' });
+    if (name === 'sectors') {
+      window.setTimeout(function () {
+        var box = document.querySelector('#sectorTable .x-scroll');
+        if (box) scrollToLatest(box);
+      }, 40);
+    }
+    if (name === 'ladder') {
+      window.setTimeout(function () {
+        var wrapEl = document.getElementById('ladderWrap');
+        if (wrapEl) scrollToLatest(wrapEl);
+      }, 40);
+    }
   }
 
   tabs.forEach(function (tab) {
@@ -1434,6 +1446,7 @@
           name: row.name,
           code: row.code || '',
           themes: row.themes || [],
+          cells: row.cells || {},
           d13: row['d' + L0],
           d16: row['d' + L1],
           d17: row['d' + L2],
