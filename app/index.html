@@ -816,9 +816,10 @@
     window.scrollTo({ top: 0, behavior: 'auto' });
     if (name === 'sectors') {
       window.setTimeout(function () {
-        var box = document.querySelector('#sectorTable .x-scroll');
+        var box = document.querySelector('#sectorTable .sb-scroll');
         if (box) box.scrollLeft = box.scrollWidth;
-      }, 60);
+        renderSectors();
+      }, 40);
     }
     if (name === 'ladder') {
       window.setTimeout(function () {
