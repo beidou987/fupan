@@ -785,14 +785,14 @@
     if (name === 'sectors') {
       window.setTimeout(function () {
         var box = document.querySelector('#sectorTable .x-scroll');
-        if (box) scrollToLatest(box);
-      }, 40);
+        if (box) box.scrollLeft = box.scrollWidth;
+      }, 60);
     }
     if (name === 'ladder') {
       window.setTimeout(function () {
         var wrapEl = document.getElementById('ladderWrap');
-        if (wrapEl) scrollToLatest(wrapEl);
-      }, 40);
+        if (wrapEl) wrapEl.scrollLeft = wrapEl.scrollWidth;
+      }, 60);
     }
   }
 
@@ -998,16 +998,6 @@
   }
 
   /* ---------------- 题材轮动 ---------------- */
-  function scrollToLatest(el) {
-    if (!el) return;
-    const apply = function () { el.scrollLeft = el.scrollWidth; };
-    apply();
-    if (window.requestAnimationFrame) {
-      window.requestAnimationFrame(function () { apply(); window.requestAnimationFrame(apply); });
-    }
-    window.setTimeout(apply, 150);
-  }
-
   function sectorCell(sector, day) {
     const cell = sector.cells[day];
     let body;
@@ -1048,7 +1038,11 @@
       ? '<div class="x-scroll"><table class="matrix">' + head + '<tbody>' + body + '</tbody></table></div>'
       : '<div class="empty" style="border:0;background:none"><strong>没有匹配的板块</strong><span>试试“芯片”“机器人”“算力”等关键词。</span></div>';
 
-    scrollToLatest(table.querySelector('.x-scroll'));
+    (function (box) {
+      if (!box) return;
+      box.scrollLeft = box.scrollWidth;
+      window.setTimeout(function () { box.scrollLeft = box.scrollWidth; }, 80);
+    })(table.querySelector('.x-scroll'));
 
     const count = document.getElementById('sectorCount');
     if (count) count.textContent = rows.length + ' 个题材 · ' + SECTOR_DATES.length + ' 个交易日（可横向滑动）';
@@ -1543,7 +1537,8 @@
 
     wrap.innerHTML = '<table class="ladder-table wide' + (store.get('showSide') ? '' : ' hide-side') +
       (store.get('compactRows') ? ' compact' : '') + '">' + head + '<tbody>' + body + '</tbody></table>';
-    scrollToLatest(wrap);
+    wrap.scrollLeft = wrap.scrollWidth;
+    window.setTimeout(function () { wrap.scrollLeft = wrap.scrollWidth; }, 80);
   }
 
   /* ---------------- 抽屉 ---------------- */
