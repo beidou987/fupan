@@ -986,6 +986,16 @@
   }
 
   /* ---------------- 题材轮动 ---------------- */
+  function scrollToLatest(el) {
+    if (!el) return;
+    const apply = function () { el.scrollLeft = el.scrollWidth; };
+    apply();
+    if (window.requestAnimationFrame) {
+      window.requestAnimationFrame(function () { apply(); window.requestAnimationFrame(apply); });
+    }
+    window.setTimeout(apply, 150);
+  }
+
   function sectorCell(sector, day) {
     const cell = sector.cells[day];
     let body;
@@ -1026,8 +1036,7 @@
       ? '<div class="x-scroll"><table class="matrix">' + head + '<tbody>' + body + '</tbody></table></div>'
       : '<div class="empty" style="border:0;background:none"><strong>没有匹配的板块</strong><span>试试“芯片”“机器人”“算力”等关键词。</span></div>';
 
-    const scroller = table.querySelector('.x-scroll');
-    if (scroller) scroller.scrollLeft = scroller.scrollWidth;
+    scrollToLatest(table.querySelector('.x-scroll'));
 
     const count = document.getElementById('sectorCount');
     if (count) count.textContent = rows.length + ' 个题材 · ' + SECTOR_DATES.length + ' 个交易日（可横向滑动）';
@@ -1521,7 +1530,7 @@
 
     wrap.innerHTML = '<table class="ladder-table wide' + (store.get('showSide') ? '' : ' hide-side') +
       (store.get('compactRows') ? ' compact' : '') + '">' + head + '<tbody>' + body + '</tbody></table>';
-    wrap.scrollLeft = wrap.scrollWidth;
+    scrollToLatest(wrap);
   }
 
   /* ---------------- 抽屉 ---------------- */
@@ -1930,7 +1939,8 @@
 
   txt('newsDate', mmdd(d2) + ' 收盘 · 数据截至 ' + mmdd(d2));
   txt('newsCount', D.briefs.length + ' 条 · 按热度');
-  txt('sectorMeta', '板块强度 · 按 ' + dd[1] + ' 涨停数排序 · 左列对比 ' + dd[0]);
+  var sdates = (D.sectorDates || dd);
+  txt('sectorMeta', '板块强度 · 按 ' + sdates[sdates.length - 1] + ' 涨停数排序 · 共 ' + sdates.length + ' 个交易日，可横向滑动看历史');
   txt('sectorNote', '黄色列为 ' + dd[1] + ' 涨停家数第一的主题板块；涨跌家数接口未开通，以真实首板 / 连板结构替代。');
   txt('mfNote', '数据为 ' + rng + ' 龙虎榜明细，按个股去重、单位亿元；龙虎榜为盘后公开数据，不构成投资建议。');
   txt('ladderNote', rng + ' 真实涨停梯队；左右滑动查看历史列；筛选数量为 3 日相关个股（含断板），断板组指 ' + dd[0] + ' 涨停且 ' + dd[1] + ' 未涨停。');
