@@ -462,6 +462,7 @@
 
   /* ---- 消息面来源行 ---- */
   .news-meta{display:flex;align-items:center;gap:8px;margin-top:7px;font-size:10.5px;color:var(--dim);flex-wrap:wrap}
+  .news-meta .src.deep{color:#f7d488;border-color:rgba(247,212,136,.55);background:rgba(247,212,136,.10)}
   .news-meta .src{padding:1px 6px;border-radius:4px;border:1px solid var(--line-strong);color:#aab6cc;background:rgba(255,255,255,.03)}
   a.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;text-decoration:none}
 
@@ -970,6 +971,7 @@
         '<div><h3 class="news-title">' + esc(item.title) + (item.hot ? flameIcon() : '') + '</h3>' +
         '<div class="news-tags">' + tags + '</div>' +
         '<div class="news-meta">' + (item.source ? '<span class="src">' + esc(item.source) + '</span>' : '') +
+        (item.deep ? '<span class="src deep">深度</span>' : '') +
         '<span>' + esc(item.time || '') + '</span></div></div>' +
         '</article>';
     }).join('');
@@ -988,6 +990,7 @@
       '<p class="sheet-copy">' + esc(item.summary) + '</p>' +
       '<div class="news-meta" style="margin-top:12px">' +
       (item.source ? '<span class="src">' + esc(item.source) + '</span>' : '') +
+      (item.deep ? '<span class="src deep">深度</span>' : '') +
       '<span>' + esc(item.time || '') + '</span></div>' +
       (item.url
         ? '<div class="sheet-actions"><a class="btn primary" href="' + esc(item.url) + '" target="_blank" rel="noopener">阅读原文</a>'
