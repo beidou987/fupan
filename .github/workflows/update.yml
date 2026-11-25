@@ -56,6 +56,8 @@ jobs:
         run: |
           cd app
           git init -q
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git checkout -q -b gh-pages
           git add -A
           git commit -q -m "deploy: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
