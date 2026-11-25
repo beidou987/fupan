@@ -463,6 +463,9 @@
   /* ---- 消息面来源行 ---- */
   .news-meta{display:flex;align-items:center;gap:8px;margin-top:7px;font-size:10.5px;color:var(--dim);flex-wrap:wrap}
   .news-meta .src.deep{color:#f7d488;border-color:rgba(247,212,136,.55);background:rgba(247,212,136,.10)}
+  .scope-row{display:flex;align-items:center;gap:8px;margin:0 0 8px;overflow-x:auto;scrollbar-width:none}
+  .scope-row::-webkit-scrollbar{display:none}
+  .news-item[data-deep="1"]{box-shadow:inset 2px 0 0 rgba(247,212,136,.85)}
   .news-meta .src{padding:1px 6px;border-radius:4px;border:1px solid var(--line-strong);color:#aab6cc;background:rgba(255,255,255,.03)}
   a.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;text-decoration:none}
 
@@ -522,6 +525,26 @@
   .matrix th.is-active{background:#6d2f2b;color:#ffd7d3}
   .matrix tr.is-top td.mx-name{color:#f7d488}
   .matrix .dim{color:#5b6577}
+  .sb-scroll{overflow-x:auto;overflow-y:hidden;-webkit-overflow-scrolling:touch;padding-bottom:2px}
+  .sb-scroll::-webkit-scrollbar{display:none}
+  .sb-grid{display:flex;gap:6px;width:max-content;padding:0 2px}
+  .sb-col{flex:0 0 calc((100vw - 46px)/3);min-width:110px;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:rgba(11,17,31,.66)}
+  .sb-head{height:32px;display:flex;align-items:center;justify-content:center;gap:2px;font-size:12px;font-weight:700;color:#e6ecf6;background:#121c31;border-bottom:1px solid var(--line);letter-spacing:.2px}
+  .sb-head.is-latest{color:#ffd7d3;background:#2a1b23}
+  .sb-head em{font-style:normal;font-size:9px;color:#ff9497}
+  .sb-list{display:flex;flex-direction:column}
+  .sb-cell{position:relative;display:flex;flex-direction:column;gap:3px;padding:8px 8px 8px 20px;text-align:left;border:0;border-bottom:1px solid rgba(255,255,255,.05);background:transparent;color:inherit;min-height:64px;font:inherit}
+  .sb-cell:last-child{border-bottom:0}
+  .sb-cell:active{background:rgba(139,123,255,.14)}
+  .sb-cell.is-top{background:rgba(247,212,136,.16)}
+  .sb-rank{position:absolute;left:5px;top:8px;font-size:10px;font-weight:700;color:#7c8798;font-variant-numeric:tabular-nums}
+  .sb-cell.is-top .sb-rank{color:#b9963f}
+  .sb-name{font-size:12.5px;font-weight:600;color:#e9eef8;line-height:1.25;display:block}
+  .sb-line{font-size:10px;color:#8b96aa;display:flex;align-items:baseline;gap:3px;flex-wrap:wrap;font-variant-numeric:tabular-nums}
+  .sb-line b{font-size:13.5px;font-weight:700}
+  .sb-line i{font-style:normal;font-size:10px}
+  .sb-lbc{font-size:9.5px;color:#f7d488}
+  .sb-empty{padding:18px 8px;font-size:11px;color:#5b6577;text-align:center}
   /* ---- 梯队宽表 ---- */
   .ladder-wrap::-webkit-scrollbar{height:6px;display:block}
   .ladder-wrap::-webkit-scrollbar-thumb{background:rgba(255,255,255,.18);border-radius:3px}
@@ -601,9 +624,16 @@
             <input id="newsSearch" type="search" autocomplete="off" placeholder="题材、概念、个股、消息" aria-label="搜索消息面">
           </div>
         </div>
-        <div class="feed-meta"><span id="newsDate">收盘 · 数据加载中</span><span id="newsCount">9 条 · 按热度</span></div>
+        <div class="feed-meta"><span id="newsDate">收盘 · 数据加载中</span><span id="newsCount">9 条 · 深度 0 篇</span></div>
+        <div class="scope-row" id="newsScope" role="group" aria-label="消息筛选">
+          <div class="seg">
+            <button type="button" data-news-scope="all" aria-pressed="true">全部</button>
+            <button type="button" data-news-scope="feed" aria-pressed="false">快讯</button>
+            <button type="button" data-news-scope="deep" aria-pressed="false">深度</button>
+          </div>
+        </div>
         <div class="news-list" id="newsList"></div>
-        <p class="feed-foot" id="feedFoot"><strong>数据来源：</strong>消息面取自财联社电报、中国政府网与发改委要闻；行情取东方财富、同花顺、腾讯证券公开接口。不构成投资建议。</p>
+        <p class="feed-foot" id="feedFoot"><strong>数据来源：</strong>消息面取自财联社电报、中国政府网与发改委要闻，深度文章取自陆家嘴金融网（中国金融信息中心）；行情取东方财富、同花顺、腾讯证券公开接口。不构成投资建议。</p>
         <button class="fab" type="button" data-action="refreshNews" aria-label="刷新消息面">
           <svg class="icon" aria-hidden="true"><use href="#i-refresh"/></svg>
         </button>
@@ -761,6 +791,7 @@
     loggedIn: false,
     hideStock: false,
     newsQuery: '',
+    newsScope: 'all',
     sectorQuery: '',
     dataDate: '',
     ladderDate: '',
@@ -902,6 +933,7 @@
 
   store.set({
     newsQuery: '',
+    newsScope: 'all',
     sectorQuery: '',
     sectorHighlight: SD1,
     refreshStamp: DATA.refreshStamp,
@@ -938,9 +970,16 @@
 
   /* ---------------- 消息面 ---------------- */
   function filteredNews() {
+    const scope = store.get('newsScope') || 'all';
+    let list = NEWS;
+    if (scope === 'deep') {
+      list = list.filter(function (n) { return !!n.deep; });
+    } else if (scope === 'feed') {
+      list = list.filter(function (n) { return !n.deep; });
+    }
     const q = store.get('newsQuery').trim().toLowerCase();
-    if (!q) return NEWS;
-    return NEWS.filter(function (item) {
+    if (!q) return list;
+    return list.filter(function (item) {
       const haystack = [item.title, item.summary].concat(item.tags.map(function (t) { return t[0]; })).join(' ').toLowerCase();
       return haystack.indexOf(q) !== -1;
     });
@@ -953,7 +992,11 @@
     const count = document.getElementById('newsCount');
     if (count) {
       const q = store.get('newsQuery').trim();
-      count.textContent = q ? items.length + ' 条 · 搜索“' + q + '”' : items.length + ' 条 · 按热度';
+      const scope = store.get('newsScope') || 'all';
+      const deepAll = NEWS.filter(function (n) { return !!n.deep; }).length;
+      count.textContent = q
+        ? items.length + ' 条 · 搜索“' + q + '”'
+        : items.length + ' 条 · ' + (scope === 'deep' ? '陆家嘴深度' : '深度 ' + deepAll + ' 篇');
     }
     if (!items.length) {
       list.innerHTML = '<div class="empty" style="border:0;background:none"><strong>没有匹配的消息</strong><span>换个题材、概念或个股关键词试试，例如“芯片”“AI”“储能”。</span></div>';
@@ -966,12 +1009,12 @@
       const tags = item.tags.map(function (tag) {
         return '<span class="chip ' + (tag[1] === 'hot' ? 'hot' : 'concept') + '">' + esc(tag[0]) + '</span>';
       }).join('');
-      return '<article class="news-item" data-tone="' + item.tone + '" data-news-id="' + item.id + '" tabindex="0" role="button" aria-label="第' + item.rank + '条：' + esc(item.title) + '">' +
+      return '<article class="news-item" data-tone="' + item.tone + '"' + (item.deep ? ' data-deep="1"' : '') + ' data-news-id="' + item.id + '" tabindex="0" role="button" aria-label="第' + item.rank + '条：' + esc(item.title) + '">' +
         '<div class="news-rank">' + rank + '</div>' +
         '<div><h3 class="news-title">' + esc(item.title) + (item.hot ? flameIcon() : '') + '</h3>' +
         '<div class="news-tags">' + tags + '</div>' +
         '<div class="news-meta">' + (item.source ? '<span class="src">' + esc(item.source) + '</span>' : '') +
-        (item.deep ? '<span class="src deep">深度</span>' : '') +
+        (item.deep ? '<span class="src deep">' + esc(item.col || '深度') + '</span>' : '') +
         '<span>' + esc(item.time || '') + '</span></div></div>' +
         '</article>';
     }).join('');
@@ -990,7 +1033,7 @@
       '<p class="sheet-copy">' + esc(item.summary) + '</p>' +
       '<div class="news-meta" style="margin-top:12px">' +
       (item.source ? '<span class="src">' + esc(item.source) + '</span>' : '') +
-      (item.deep ? '<span class="src deep">深度</span>' : '') +
+      (item.deep ? '<span class="src deep">' + esc(item.col || '深度') + '</span>' : '') +
       '<span>' + esc(item.time || '') + '</span></div>' +
       (item.url
         ? '<div class="sheet-actions"><a class="btn primary" href="' + esc(item.url) + '" target="_blank" rel="noopener">阅读原文</a>'
@@ -1016,39 +1059,60 @@
     return '<td class="mx-cell" data-sector="' + esc(sector.name) + '" data-sector-day="' + day + '">' + body + '</td>';
   }
 
+  /* 每个交易日的题材按涨停数排序，取前 N 名——与参考软件的「板块强度」列一致 */
+  function sectorTopOf(day, n) {
+    const list = SECTORS.map(function (r) { return { row: r, cell: (r.cells || {})[day] }; })
+      .filter(function (x) { return x.cell && (x.cell.count || 0) > 0; });
+    list.sort(function (a, b) {
+      return (b.cell.count - a.cell.count) ||
+        ((b.cell.maxLbc || 0) - (a.cell.maxLbc || 0)) ||
+        a.row.name.localeCompare(b.row.name);
+    });
+    return list.slice(0, n);
+  }
+
   function renderSectors() {
-    const table = document.getElementById('sectorTable');
-    if (!table) return;
+    const wrap = document.getElementById('sectorTable');
+    if (!wrap) return;
     const q = store.get('sectorQuery').trim().toLowerCase();
-    const rows = SECTORS.filter(function (r) { return !q || r.name.toLowerCase().indexOf(q) !== -1; });
-    const highlight = store.get('sectorHighlight') || SD1;
+    const latest = SD1;
 
-    const head = '<thead><tr><th class="corner">板块 / 日期</th>' +
-      SECTOR_DATES.map(function (d) {
-        return '<th class="' + (d === highlight ? 'is-active' : '') + '" data-sector-highlight="' + d + '">' +
-          d + (d === SD1 ? '<i class="new">新</i>' : '') + '</th>';
-      }).join('') + '</tr></thead>';
-
-    const body = rows.map(function (r, i) {
-      return '<tr class="' + (i === 0 ? 'is-top' : '') + '">' +
-        '<td class="mx-name"><span class="rank ' + (i < 3 ? 'r' + (i + 1) : 'plain') + '">' + (i + 1) + '</span>' +
-        esc(r.name) + '</td>' +
-        SECTOR_DATES.map(function (d) { return sectorCell(r, d); }).join('') +
-        '</tr>';
+    const cols = SECTOR_DATES.map(function (day) {
+      let list = sectorTopOf(day, 7);
+      if (q) {
+        list = list.filter(function (x) { return x.row.name.toLowerCase().indexOf(q) !== -1; });
+      }
+      const isLatest = day === latest;
+      const head = '<div class="sb-head' + (isLatest ? ' is-latest' : '') + '">' + day +
+        (isLatest ? '<em>（第1）</em>' : '') + '</div>';
+      const cells = list.map(function (x, i) {
+        const c = x.cell || {};
+        const p = c.pct;
+        const ptxt = (p === null || p === undefined) ? '—' : ((p > 0 ? '+' : '') + Number(p).toFixed(2) + '%');
+        const lbc = (c.maxLbc || 0);
+        return '<button type="button" class="sb-cell' + (i === 0 && isLatest ? ' is-top' : '') + '"' +
+          ' data-sector="' + esc(x.row.name) + '" data-sector-day="' + day + '">' +
+          '<span class="sb-rank">' + (i + 1) + '</span>' +
+          '<span class="sb-name">' + esc(x.row.name) + '</span>' +
+          '<span class="sb-line"><b class="up">' + (c.count || 0) + '</b>个涨停' +
+          '<i class="' + (p === null || p === undefined ? 'dim' : (p >= 0 ? 'up' : 'down')) + '">' + ptxt + '</i></span>' +
+          (lbc >= 2 ? '<span class="sb-lbc">最高 ' + lbc + ' 连板</span>' : '') +
+          '</button>';
+      }).join('');
+      return '<div class="sb-col">' + head + '<div class="sb-list">' +
+        (cells || '<div class="sb-empty">无涨停题材</div>') + '</div></div>';
     }).join('');
 
-    table.innerHTML = rows.length
-      ? '<div class="x-scroll"><table class="matrix">' + head + '<tbody>' + body + '</tbody></table></div>'
-      : '<div class="empty" style="border:0;background:none"><strong>没有匹配的板块</strong><span>试试“芯片”“机器人”“算力”等关键词。</span></div>';
+    wrap.innerHTML = '<div class="sb-scroll"><div class="sb-grid">' + cols + '</div></div>';
 
     (function (box) {
       if (!box) return;
       box.scrollLeft = box.scrollWidth;
       window.setTimeout(function () { box.scrollLeft = box.scrollWidth; }, 80);
-    })(table.querySelector('.x-scroll'));
+    })(wrap.querySelector('.sb-scroll'));
 
     const count = document.getElementById('sectorCount');
-    if (count) count.textContent = rows.length + ' 个题材 · ' + SECTOR_DATES.length + ' 个交易日（可横向滑动）';
+    if (count) count.textContent = SECTORS.length + ' 个题材 · ' + SECTOR_DATES.length + ' 个交易日 · 每日前 7 名（可横向滑动）';
   }
 
   let sectorCtx = null;
@@ -1329,6 +1393,19 @@
   if (newsSearch) {
     newsSearch.addEventListener('input', function () {
       store.set({ newsQuery: newsSearch.value });
+      renderNews();
+    });
+  }
+
+  const newsScope = document.getElementById('newsScope');
+  if (newsScope) {
+    newsScope.addEventListener('click', function (event) {
+      const btn = event.target.closest('[data-news-scope]');
+      if (!btn) return;
+      store.set({ newsScope: btn.dataset.newsScope });
+      Array.prototype.forEach.call(newsScope.querySelectorAll('[data-news-scope]'), function (b) {
+        b.setAttribute('aria-pressed', String(b.dataset.newsScope === btn.dataset.newsScope));
+      });
       renderNews();
     });
   }
@@ -1949,10 +2026,10 @@
   var rng = mmdd(d0) + ' 至 ' + mmdd(d2);
 
   txt('newsDate', mmdd(d2) + ' 收盘 · 数据截至 ' + mmdd(d2));
-  txt('newsCount', D.briefs.length + ' 条 · 按热度');
+  txt('newsCount', D.briefs.length + ' 条 · 深度 ' + D.briefs.filter(function (b) { return b.deep; }).length + ' 篇');
   var sdates = (D.sectorDates || dd);
-  txt('sectorMeta', '板块强度 · 按 ' + sdates[sdates.length - 1] + ' 涨停数排序 · 共 ' + sdates.length + ' 个交易日，可横向滑动看历史');
-  txt('sectorNote', '黄色列为 ' + dd[1] + ' 涨停家数第一的主题板块；涨跌家数接口未开通，以真实首板 / 连板结构替代。');
+  txt('sectorMeta', '板块强度 · 每日涨停家数前 7 名 · 共 ' + sdates.length + ' 个交易日，左右滑动看历史');
+  txt('sectorNote', '黄色格为最新交易日涨停家数第一的板块；每格为「涨停家数 / 板块涨幅 / 最高连板」，点开看当日涨停股。涨跌家数与细分题材数暂无公开接口，不填假数据。');
   txt('mfNote', '数据为 ' + rng + ' 龙虎榜明细，按个股去重、单位亿元；龙虎榜为盘后公开数据，不构成投资建议。');
   txt('ladderNote', rng + ' 真实涨停梯队；左右滑动查看历史列；筛选数量为 3 日相关个股（含断板），断板组指 ' + dd[0] + ' 涨停且 ' + dd[1] + ' 未涨停。');
   txt('feedFoot', '数据来源：东方财富指数日线、涨停池、概念板块日线与龙虎榜明细；消息面为收盘行情自动生成的盘后速览，不构成投资建议。');
