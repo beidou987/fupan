@@ -35,6 +35,9 @@ jobs:
       - name: 安装依赖
         run: pip install --quiet requests
 
+      - name: 更新 30 天历史
+        run: python scripts/fetch_history.py
+
       - name: 抓取并构建数据
         run: python scripts/market_update.py
 
