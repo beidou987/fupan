@@ -536,7 +536,13 @@
   .sb-cell{position:relative;display:flex;flex-direction:column;gap:3px;padding:8px 8px 8px 20px;text-align:left;border:0;border-bottom:1px solid rgba(255,255,255,.05);background:transparent;color:inherit;min-height:64px;font:inherit}
   .sb-cell:last-child{border-bottom:0}
   .sb-cell:active{background:rgba(139,123,255,.14)}
-  .sb-cell.is-top{background:rgba(247,212,136,.16)}
+  .sb-cell.is-top{background:#f2cf5b}
+  .sb-cell.is-top .sb-name{color:#241c07}
+  .sb-cell.is-top .sb-line{color:#4a3a12}
+  .sb-cell.is-top .sb-line b{color:#8f2a12}
+  .sb-cell.is-top .sb-line i{color:#2f6b2f}
+  .sb-cell.is-top .sb-lbc{color:#7a5a12}
+  .sb-cell.is-top .sb-rank{color:#7a6118}
   .sb-rank{position:absolute;left:5px;top:8px;font-size:10px;font-weight:700;color:#7c8798;font-variant-numeric:tabular-nums}
   .sb-cell.is-top .sb-rank{color:#b9963f}
   .sb-name{font-size:12.5px;font-weight:600;color:#e9eef8;line-height:1.25;display:block}
@@ -818,7 +824,6 @@
       window.setTimeout(function () {
         var box = document.querySelector('#sectorTable .sb-scroll');
         if (box) box.scrollLeft = box.scrollWidth;
-        renderSectors();
       }, 40);
     }
     if (name === 'ladder') {
@@ -1113,7 +1118,7 @@
     })(wrap.querySelector('.sb-scroll'));
 
     const count = document.getElementById('sectorCount');
-    if (count) count.textContent = SECTORS.length + ' 个题材 · ' + SECTOR_DATES.length + ' 个交易日 · 每日前 7 名（可横向滑动）';
+    if (count) count.textContent = SECTORS.length + ' 个题材 · ' + SECTOR_DATES.length + ' 日';
   }
 
   let sectorCtx = null;
@@ -2029,7 +2034,7 @@
   txt('newsDate', mmdd(d2) + ' 收盘 · 数据截至 ' + mmdd(d2));
   txt('newsCount', D.briefs.length + ' 条 · 深度 ' + D.briefs.filter(function (b) { return b.deep; }).length + ' 篇');
   var sdates = (D.sectorDates || dd);
-  txt('sectorMeta', '板块强度 · 每日涨停家数前 7 名 · 共 ' + sdates.length + ' 个交易日，左右滑动看历史');
+  txt('sectorMeta', '板块强度 · 每日涨停家数前 7 名 · 左右滑动看历史');
   txt('sectorNote', '黄色格为最新交易日涨停家数第一的板块；每格为「涨停家数 / 板块涨幅 / 最高连板」，点开看当日涨停股。涨跌家数与细分题材数暂无公开接口，不填假数据。');
   txt('mfNote', '数据为 ' + rng + ' 龙虎榜明细，按个股去重、单位亿元；龙虎榜为盘后公开数据，不构成投资建议。');
   txt('ladderNote', rng + ' 真实涨停梯队；左右滑动查看历史列；筛选数量为 3 日相关个股（含断板），断板组指 ' + dd[0] + ' 涨停且 ' + dd[1] + ' 未涨停。');
