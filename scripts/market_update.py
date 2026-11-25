@@ -714,9 +714,11 @@ def validate(data, dates):
     total_rows = sum(len(g["rows"]) for g in data["ladder"]["groups"])
     if total_rows < 20:
         errs.append("涨停梯队个股过少：%d 行（疑似当日数据未就绪）" % total_rows)
+    # 龙虎榜在收盘后 17:00 才由交易所公布：15:10 那次跑不到，只降级标注，不能因此整站停更
     bill = data["billboard"].get(dates[-1]) or {}
     if len(bill.get("rows") or []) < 20:
-        errs.append("龙虎榜明细过少：%d 行" % len(bill.get("rows") or []))
+        data["gaps"].append("龙虎榜在收盘后尚未公布，本期大数据页该日明细为空（%d 行），下次运行补全"
+                            % len(bill.get("rows") or []))
     if not data["briefs"]:
         errs.append("消息面为空")
     if len(data.get("stocks") or {}) < 20:
