@@ -503,7 +503,8 @@ def build(dates, raw):
         if total:
             scored.append((nm, total))
     scored.sort(key=lambda kv: (-kv[1], kv[0]))
-    top = [nm for nm, _ in scored[:15]] or list(top)
+    # 题材页每列要排「当日涨停数前 7」，只留 15 个会让历史列大面积留空，扩到 40 个
+    top = [nm for nm, _ in scored[:40]] or list(top)
 
     def day_stocks(name, d):
         for b in (hist_blocks.get(d) or []):
@@ -581,7 +582,25 @@ def build(dates, raw):
     for name, v in ths_by_day.get(d2, {}).items():
         for s in v["stocks"]:
             theme_of.setdefault(s["c"], []).append(name)
-    theme_of_names = set(theme_of.keys())
+    theme_of_names = set(theme_of.keys())          # 个股代码 → 所属题材
+    theme_today = set(ths_by_day.get(d2, {}).keys())  # 当日题材板块名
+    HOT_ALIAS = {
+        "AI": ["人工智能", "AIGC概念", "AI应用"],
+        "算力": ["数据中心(AIDC)", "算力租赁", "智算中心（AIDC）"],
+        "半导体": ["芯片概念", "半导体概念", "存储芯片"],
+        "机器人": ["机器人概念", "人形机器人", "减速器"],
+        "军工": ["军工装备", "国防军工", "商业航天"],
+        "医药": ["创新药", "医药电商", "化学制药"],
+        "新能源": ["光伏概念", "储能", "固态电池"],
+    }
+
+    def is_hot_tag(tag):
+        if tag in theme_today:
+            return True
+        for alias in HOT_ALIAS.get(tag, []):
+            if alias in theme_today:
+                return True
+        return any(tag in n or n in tag for n in theme_today if len(n) >= 2)
 
     # 指数
     idx = {}
@@ -682,8 +701,8 @@ def build(dates, raw):
         tone_map = {"official": "brown", "cls": "red"}
         for i, it in enumerate(news_items[:12], 1):
             tags = []
-            for t in (it.get("tags") or [])[:3]:
-                tags.append([t, "hot" if t in theme_of_names else "concept"])
+            for t in (it.get("tags") or [])[:4]:
+                tags.append([t, "hot" if is_hot_tag(t) else "concept"])
             if not tags:
                 tags = [[it.get("source") or "市场消息", "concept"]]
             briefs.append({
@@ -697,6 +716,7 @@ def build(dates, raw):
                 "source": it.get("source") or "",
                 "url": it.get("url") or "",
                 "deep": bool(it.get("deep")),
+                "col": it.get("col") or "",
             })
     if not briefs:
         DEGRADED.append("消息面新闻源不可用，回退收盘行情速览")
