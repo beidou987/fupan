@@ -500,6 +500,37 @@
   .stk-grid span{color:var(--dim);flex:none}
   .stk-grid b{font-variant-numeric:tabular-nums;font-weight:500}
   .stk-foot{font-size:11px;color:var(--dim);line-height:1.6;margin-top:8px}
+
+  /* ---- 横向历史矩阵 ---- */
+  .sector-table{border:0;background:none;overflow:visible}
+  .x-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;border:1px solid var(--line);border-radius:12px;background:rgba(11,17,31,.66)}
+  .x-scroll::-webkit-scrollbar{height:6px}
+  .x-scroll::-webkit-scrollbar-thumb{background:rgba(255,255,255,.18);border-radius:3px}
+  .matrix{border-collapse:separate;border-spacing:0;width:max-content;font-size:11px}
+  .matrix th,.matrix td{border-left:1px solid var(--line);border-top:1px solid var(--line);width:62px;min-width:62px;padding:7px 3px;text-align:center}
+  .matrix thead th{position:sticky;top:0;z-index:3;background:#0f1829;color:var(--muted);font-size:10px;font-weight:600;white-space:nowrap}
+  .matrix th .new{font-style:normal;font-size:8px;margin-left:2px;color:#ff9497}
+  .matrix th.corner{position:sticky;left:0;top:0;z-index:5;width:104px;min-width:104px;text-align:left;padding-left:10px;background:#0f1829}
+  .matrix td.mx-name{position:sticky;left:0;z-index:2;width:104px;min-width:104px;text-align:left;padding-left:8px;background:#0d1526;font-size:11.5px;line-height:1.25}
+  .matrix td.mx-name .rank{width:18px;height:18px;font-size:10px;margin-right:4px;vertical-align:middle}
+  .matrix td.mx-cell{cursor:pointer}
+  .matrix td.mx-cell:active{background:rgba(139,123,255,.18)}
+  .matrix td.mx-cell .n{display:block;font-size:13px;font-weight:600;font-variant-numeric:tabular-nums;color:#e6ecf6}
+  .matrix td.mx-cell .p{display:block;font-size:9px;margin-top:1px;font-variant-numeric:tabular-nums}
+  .matrix td.mx-cell .mb{display:block;font-size:8.5px;margin-top:1px;color:#f7d488}
+  .matrix th.is-active{background:#6d2f2b;color:#ffd7d3}
+  .matrix tr.is-top td.mx-name{color:#f7d488}
+  .matrix .dim{color:#5b6577}
+  /* ---- 梯队宽表 ---- */
+  .ladder-wrap::-webkit-scrollbar{height:6px;display:block}
+  .ladder-wrap::-webkit-scrollbar-thumb{background:rgba(255,255,255,.18);border-radius:3px}
+  .ladder-table.wide{table-layout:auto;min-width:0;width:max-content}
+  .ladder-table.wide th,.ladder-table.wide td.l-cell{width:50px;min-width:50px}
+  .ladder-table.wide thead th{position:sticky;top:0;z-index:3}
+  .ladder-table.wide th.corner,.ladder-table.wide td.corner{position:sticky;left:0;z-index:2;width:96px;min-width:96px;background:#0d1526;text-align:left;padding-left:10px}
+  .ladder-table.wide thead th.corner{background:#0f1829;z-index:5}
+  .ladder-table.wide td.l-concept{width:130px;min-width:130px;text-align:left;font-size:10.5px}
+  .ladder-table.wide tr.ladder-group td.grp{text-align:left}
 </style>
 </head>
 <body>
@@ -852,8 +883,9 @@
 
   const DATA = window.REAL_DATA;
   const DATES = DATA.dates;
-  const SD0 = DATA.sectorDates[0];
-  const SD1 = DATA.sectorDates[1];
+  const SECTOR_DATES = (DATA.sectorDates || []).slice();
+  const SD1 = SECTOR_DATES[SECTOR_DATES.length - 1] || '';
+  const SD0 = SECTOR_DATES[SECTOR_DATES.length - 2] || SD1;
 
   store.set({
     newsQuery: '',
@@ -873,11 +905,8 @@
     SECTOR_STOCKS[row.name] = row.stocks || {};
   });
 
-  const SECTORS = window.REAL_DATA.sectorRows.map(function (row) {
-    return {
-      left: Object.assign({ name: row.name }, row['d' + SD0]),
-      right: Object.assign({ name: row.name }, row['d' + SD1])
-    };
+  const SECTORS = (window.REAL_DATA.sectorRows || []).map(function (row) {
+    return { name: row.name, cells: row.cells || {}, stocks: row.stocks || {}, count: row.count || 0 };
   });
 
   function esc(value) {
@@ -957,56 +986,51 @@
   }
 
   /* ---------------- 题材轮动 ---------------- */
-  function sectorCell(block, day, highlight) {
-    const cls = ['sector-cell'];
-    if (block.highlight) cls.push('is-highlight');
-    const pct = (block.pct === null || block.pct === undefined) ? '—' : ((block.pct > 0 ? '+' : '') + block.pct.toFixed(2) + '%');
-    const unknown = block.count === null || block.count === undefined;
-    const structure = unknown ? '未进当日涨停前列' : (block.count > 0 ? ('首板 ' + block.first + ' · 连板 ' + block.lian) : '无涨停') + (block.src === 'em' ? ' · 东财口径' : '');
-    const countText = unknown ? '—' : block.count;
-    return '<button class="' + cls.join(' ') + '" type="button" data-sector="' + esc(block.name) + '" data-sector-day="' + day + '" aria-label="' + esc(block.name) + '，涨停 ' + countText + ' 家，板块 ' + pct + '">' +
-      '<div class="sector-name">' + esc(block.name) + '</div>' +
-      '<div class="sector-sub">' + structure + '</div>' +
-      '<div class="sector-stats"><b>' + countText + '</b> 涨停 <b class="' + (block.pct === null || block.pct === undefined ? 'dim' : (block.pct >= 0 ? 'up' : 'down')) + '">' + pct + '</b></div>' +
-      '</button>';
+  function sectorCell(sector, day) {
+    const cell = sector.cells[day];
+    let body;
+    if (!cell) {
+      body = '<span class="n dim">—</span>';
+    } else {
+      const p = cell.pct;
+      const ptxt = (p === null || p === undefined) ? '—' : ((p > 0 ? '+' : '') + Number(p).toFixed(2) + '%');
+      body = '<span class="n">' + cell.count + '</span>' +
+        '<span class="p ' + (p === null || p === undefined ? 'dim' : (p >= 0 ? 'up' : 'down')) + '">' + ptxt + '</span>' +
+        (cell.maxLbc >= 2 ? '<span class="mb">' + cell.maxLbc + '板</span>' : '');
+    }
+    return '<td class="mx-cell" data-sector="' + esc(sector.name) + '" data-sector-day="' + day + '">' + body + '</td>';
   }
 
   function renderSectors() {
     const table = document.getElementById('sectorTable');
     if (!table) return;
     const q = store.get('sectorQuery').trim().toLowerCase();
-    const highlight = store.get('sectorHighlight');
-    const highlightName = highlight === SD0 ? SECTORS[0].left.name : SECTORS[0].right.name;
-    const rows = SECTORS.filter(function (row) {
-      if (!q) return true;
-      return (row.left.name + ' ' + row.right.name).toLowerCase().indexOf(q) !== -1;
-    }).map(function (row) {
-      return {
-        left: Object.assign({}, row.left, { highlight: highlight === SD0 && row.left.name === highlightName }),
-        right: Object.assign({}, row.right, { highlight: highlight === SD1 && row.right.name === highlightName })
-      };
-    });
+    const rows = SECTORS.filter(function (r) { return !q || r.name.toLowerCase().indexOf(q) !== -1; });
+    const highlight = store.get('sectorHighlight') || SD1;
 
-    const head = '<div class="sector-head">' +
-      '<span>板块<br>强度</span>' +
-      '<button class="day-col' + (highlight === SD0 ? ' is-active' : '') + '" type="button" data-sector-highlight="' + SD0 + '" aria-pressed="' + (highlight === SD0) + '">' + SD0 + '<small>前一日</small></button>' +
-      '<button class="day-col' + (highlight === SD1 ? ' is-active' : '') + '" type="button" data-sector-highlight="' + SD1 + '" aria-pressed="' + (highlight === SD1) + '">' + SD1 + '<small>最新</small></button>' +
-      '</div>';
+    const head = '<thead><tr><th class="corner">板块 / 日期</th>' +
+      SECTOR_DATES.map(function (d) {
+        return '<th class="' + (d === highlight ? 'is-active' : '') + '" data-sector-highlight="' + d + '">' +
+          d + (d === SD1 ? '<i class="new">新</i>' : '') + '</th>';
+      }).join('') + '</tr></thead>';
 
-    if (!rows.length) {
-      table.innerHTML = head + '<div class="empty" style="border:0;background:none"><strong>没有匹配的板块</strong><span>试试“芯片”“机器人”“光刻”等关键词。</span></div>';
-    } else {
-      table.innerHTML = head + rows.map(function (row, index) {
-        return '<div class="sector-row">' +
-          '<div class="sector-rank"><span class="rank ' + (index < 3 ? 'r' + (index + 1) : 'plain') + '">' + (index + 1) + '</span></div>' +
-          sectorCell(row.left, SD0) +
-          sectorCell(row.right, SD1) +
-          '</div>';
-      }).join('');
-    }
+    const body = rows.map(function (r, i) {
+      return '<tr class="' + (i === 0 ? 'is-top' : '') + '">' +
+        '<td class="mx-name"><span class="rank ' + (i < 3 ? 'r' + (i + 1) : 'plain') + '">' + (i + 1) + '</span>' +
+        esc(r.name) + '</td>' +
+        SECTOR_DATES.map(function (d) { return sectorCell(r, d); }).join('') +
+        '</tr>';
+    }).join('');
+
+    table.innerHTML = rows.length
+      ? '<div class="x-scroll"><table class="matrix">' + head + '<tbody>' + body + '</tbody></table></div>'
+      : '<div class="empty" style="border:0;background:none"><strong>没有匹配的板块</strong><span>试试“芯片”“机器人”“算力”等关键词。</span></div>';
+
+    const scroller = table.querySelector('.x-scroll');
+    if (scroller) scroller.scrollLeft = scroller.scrollWidth;
 
     const count = document.getElementById('sectorCount');
-    if (count) count.textContent = rows.length + ' 个主题 · 2 个交易日';
+    if (count) count.textContent = rows.length + ' 个题材 · ' + SECTOR_DATES.length + ' 个交易日（可横向滑动）';
   }
 
   let sectorCtx = null;
@@ -1022,7 +1046,7 @@
     const name = sectorCtx.name;
     const day = sectorCtx.day;
     const row = (window.REAL_DATA.sectorRows || []).filter(function (r) { return r.name === name; })[0] || {};
-    const cell = row['d' + day] || {};
+    const cell = (row.cells || {})[day] || {};
     const pool = sectorStocks();
     const tab = store.get('sectorTab') || 'limit';
     const sort = store.get('sectorSort') || 'board';
@@ -1094,6 +1118,8 @@
       (cell.src === 'em' ? '<p class="detail-hint" style="color:#d8a33a">该日该题材未进入同花顺涨停前列，成分股按东财涨停池概念归类，不含板块涨跌幅</p>' : '') +
       '<div class="sort-row">' + sorts + '</div>' +
       (empty || body) +
+      (!pool.length ? '<p class="detail-hint" style="color:#d8a33a">该日仅保留题材强度数字（' +
+        (cell.count === undefined ? '—' : cell.count) + ' 家涨停），成分股明细只提供最近三个交易日</p>' : '') +
       '<p class="stk-foot">涨停家数与成分股来自同花顺涨停池（板块涨停统计）；点击卡片查看个股涨停细节。</p>' +
       '<div class="sheet-actions"><button class="btn ghost" type="button" data-close-sheet>关闭</button></div>';
   }
@@ -1177,8 +1203,7 @@
     const highlight = store.get('sectorHighlight');
     UI.openSheet('题材轮动设置',
       '<div class="setting-row"><div><div class="label">强度主列</div><div class="hint">高亮当日排名第 1 的板块</div></div>' +
-      '<div class="seg"><button type="button" data-set-highlight="' + SD0 + '" aria-pressed="' + (highlight === SD0) + '">' + SD0 + '</button>' +
-      '<button type="button" data-set-highlight="' + SD1 + '" aria-pressed="' + (highlight === SD1) + '">' + SD1 + '</button></div></div>' +
+      '<div class="seg"><button type="button" data-set-highlight="' + SD1 + '" aria-pressed="' + (highlight === SD1) + '">最新 ' + SD1 + '</button></div></div>' +
       '<div class="setting-row"><div><div class="label">涨跌配色</div><div class="hint">默认红涨绿跌，可切换为绿涨红跌</div></div>' +
       '<div class="seg"><button type="button" data-color-mode="redUp" aria-pressed="' + (store.get('colorMode') !== 'greenUp') + '">红涨</button>' +
       '<button type="button" data-color-mode="greenUp" aria-pressed="' + (store.get('colorMode') === 'greenUp') + '">绿涨</button></div></div>' +
@@ -1322,7 +1347,7 @@
     mfIndex: 2,
     mfMetric: 'net',
     ladderFilter: '全部梯队',
-    ladderCol: window.REAL_DATA.dates[2],
+    ladderCol: (window.REAL_DATA.ladder.dates || window.REAL_DATA.dates).slice(-1)[0],
     showSide: true,
     compactRows: false,
     markedDates: new Set(),
@@ -1389,6 +1414,7 @@
   }
 
   /* ---------------- 连板梯队 ---------------- */
+  const LADDER_DATES = (window.REAL_DATA.ladder.dates || window.REAL_DATA.dates || []).slice();
   const LADDER_GROUPS = window.REAL_DATA.ladder.groups.map(function (group) {
     return {
       title: group.title,
@@ -1397,6 +1423,8 @@
       rows: group.rows.map(function (row) {
         return {
           name: row.name,
+          code: row.code || '',
+          themes: row.themes || [],
           d13: row['d' + L0],
           d16: row['d' + L1],
           d17: row['d' + L2],
@@ -1433,9 +1461,19 @@
     });
   }
 
+  function stateCell(day, cells, activeCol) {
+    const cell = cells && cells[day];
+    if (!cell) return '<td class="l-cell' + (activeCol === day ? ' active' : '') + '"><span class="dim">—</span></td>';
+    let inner;
+    if (cell.k === 'state') inner = '<span class="l-state">' + cell.t + (cell.sub ? '<span>' + cell.sub + '</span>' : '') + '</span>';
+    else if (cell.k === 'broken') inner = '<span class="l-state broken">' + cell.t + (cell.sub ? '<span>' + cell.sub + '</span>' : '') + '</span>';
+    else inner = '<span class="l-num ' + (cell.dir || '') + '">' + cell.t + '</span>';
+    return '<td class="l-cell' + (activeCol === day ? ' active' : '') + '">' + inner + '</td>';
+  }
+
   function renderLadder() {
     const filter = LADDER_FILTERS.filter(function (f) { return f.name === store.get('ladderFilter'); })[0] || LADDER_FILTERS[0];
-    const activeCol = store.get('ladderCol');
+    const activeCol = store.get('ladderCol') || LADDER_DATES[LADDER_DATES.length - 1];
 
     const filterBar = document.getElementById('ladderFilter');
     if (filterBar) {
@@ -1456,35 +1494,34 @@
     if (!wrap) return;
 
     if (!groups.length) {
-      wrap.innerHTML = '<div class="empty" style="margin:16px;border:0;background:none"><strong>该题材暂无涨停标的</strong><span>切换“全部梯队”查看 63 只真实涨停 / 断板个股，或换个题材试试。</span></div>';
+      wrap.innerHTML = '<div class="empty" style="margin:16px;border:0;background:none"><strong>该题材暂无涨停标的</strong><span>切换“全部梯队”查看当日涨停与断板个股。</span></div>';
       return;
     }
 
     let maskIndex = 0;
+    const head = '<thead><tr><th class="corner">股票</th>' +
+      LADDER_DATES.map(function (d) {
+        return '<th class="' + (activeCol === d ? 'active' : '') + '" data-ladder-col="' + d + '">' + d + '</th>';
+      }).join('') +
+      '<th class="concept">概念/原因</th></tr></thead>';
+
     const body = groups.map(function (group) {
-      return '<tr class="ladder-group ' + group.tone + '"><td colspan="5">' + group.title + '<span>' + group.stat + '</span></td></tr>' +
+      return '<tr class="ladder-group ' + group.tone + '"><td class="grp" colspan="' + (LADDER_DATES.length + 2) + '">' +
+        group.title + '<span>' + group.stat + '</span></td></tr>' +
         group.rows.map(function (row) {
           const side = row.side && store.get('showSide')
-            ? '<span class="side-tag ' + row.side.c + '">' + row.side.t + '</span>'
-            : '';
+            ? '<span class="side-tag ' + row.side.c + '">' + row.side.t + '</span>' : '';
           const label = store.get('hideStock') ? '标的 ' + String(++maskIndex).padStart(2, '0') : row.name;
-          return '<tr class="l-row"' + (store.get('hideStock') ? '' : ' data-stock="' + esc(row.code || '') + '" tabindex="0"') + '>' +
-            '<td><div class="l-namebox">' + side + '<span class="l-name">' + label + '</span></div></td>' +
-            stateCell(L0, row.d13, activeCol) +
-            stateCell(L1, row.d16, activeCol) +
-            stateCell(L2, row.d17, activeCol) +
-            '<td class="l-concept">' + row.concepts + '</td>' +
-            '</tr>';
+          return '<tr class="l-row"' + (store.get('hideStock') || !row.code ? '' : ' data-stock="' + esc(row.code) + '" tabindex="0"') + '>' +
+            '<td class="corner"><div class="l-namebox">' + side + '<span class="l-name">' + label + '</span></div></td>' +
+            LADDER_DATES.map(function (d) { return stateCell(d, row.cells, activeCol); }).join('') +
+            '<td class="l-concept">' + row.concepts + '</td></tr>';
         }).join('');
     }).join('');
 
-    wrap.innerHTML = '<table class="ladder-table' + (store.get('showSide') ? '' : ' hide-side') + (store.get('compactRows') ? ' compact' : '') + '">' +
-      '<colgroup><col style="width:96px"><col style="width:60px"><col style="width:60px"><col style="width:74px"><col></colgroup>' +
-      '<thead><tr><th>股票</th>' +
-      '<th class="' + (activeCol === L0 ? 'active' : '') + '" data-ladder-col="' + L0 + '">' + L0 + '</th>' +
-      '<th class="' + (activeCol === L1 ? 'active' : '') + '" data-ladder-col="' + L1 + '">' + L1 + '</th>' +
-      '<th class="' + (activeCol === L2 ? 'active' : '') + '" data-ladder-col="' + L2 + '">' + L2 + '</th>' +
-      '<th class="concept">概念/原因</th></tr></thead><tbody>' + body + '</tbody></table>';
+    wrap.innerHTML = '<table class="ladder-table wide' + (store.get('showSide') ? '' : ' hide-side') +
+      (store.get('compactRows') ? ' compact' : '') + '">' + head + '<tbody>' + body + '</tbody></table>';
+    wrap.scrollLeft = wrap.scrollWidth;
   }
 
   /* ---------------- 抽屉 ---------------- */
