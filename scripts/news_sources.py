@@ -176,6 +176,75 @@ def cls_telegraph(rn=100, category="important"):
 
 
 
+
+# ------------------------------------------------------------------ 陆家嘴金融网（深度）
+LJZ_SECTIONS = [
+    ("/topic/risk-alert-weekly", "风险预警"),
+    ("/section/industry-tech", "产业科技"),
+    ("/section/macro-policy", "宏观政策"),
+    ("/section/finance", "财经"),
+]
+LJZ_SKIP = ["招聘", "招募", "大赛", "榜单", "活动报名", "公益", "年会", "论坛", "沙龙", "课程", "直播预告"]
+
+
+def _ljz_meta(html):
+    desc = re.search(r'<meta[^>]+(?:name|property)="(?:description|og:description)"[^>]+content="([^"]{10,400})"', html)
+    pub = re.search(r'<meta[^>]+property="article:published_time"[^>]+content="([^"]{10,30})"', html)
+    return (_clean(desc.group(1)) if desc else "", pub.group(1) if pub else "")
+
+
+def ljz_deep(theme_names, limit=3):
+    """陆家嘴金融网深度文章：优先《风险预警》周刊与产业科技栏目，抓正文摘要与发布时间。"""
+    cands, seen = [], set()
+    for path, label in LJZ_SECTIONS:
+        try:
+            r = requests.get("https://www.ljzfin.com" + path,
+                             headers={"User-Agent": UA_PC}, timeout=25, verify=False)
+            r.encoding = r.apparent_encoding or "utf-8"
+            html = r.text
+        except Exception as exc:  # noqa: BLE001
+            print("    陆家嘴栏目失败 %s %s" % (path, exc))
+            continue
+        for href, inner in re.findall(r'<a[^>]+href="(/article/[^"#?]+)"[^>]*>(.*?)</a>', html, re.S):
+            title = _clean(re.sub(r"<[^>]+>", "", inner))
+            if len(title) < 8 or href in seen:
+                continue
+            if any(w in title for w in LJZ_SKIP):
+                continue
+            seen.add(href)
+            cands.append({"href": href, "title": title, "label": label, "section": path})
+
+    # 《风险预警》与产业科技优先
+    order = {"风险预警": 0, "产业科技": 1, "宏观政策": 2, "财经": 3}
+    cands.sort(key=lambda x: order.get(x["label"], 9))
+
+    out = []
+    for c in cands:
+        if len(out) >= limit:
+            break
+        try:
+            d = requests.get("https://www.ljzfin.com" + c["href"],
+                             headers={"User-Agent": UA_PC}, timeout=25, verify=False)
+            d.encoding = d.apparent_encoding or "utf-8"
+            desc, pub = _ljz_meta(d.text)
+        except Exception as exc:  # noqa: BLE001
+            print("    陆家嘴正文失败 %s %s" % (c["href"], exc))
+            desc, pub = "", ""
+        if not pub:
+            continue
+        when = pub[:16].replace("T", " ")
+        # 标题里带「|《风险预警》252期上新」这类尾巴，去掉便于阅读
+        title = re.split(r"\s*\|\s*《风险预警》", c["title"])[0].strip()
+        out.append({
+            "source": "陆家嘴金融网", "kind": "deep", "level": "", "deep": True,
+            "title": title, "body": desc, "time": when, "date": when[:10],
+            "url": "https://www.ljzfin.com" + c["href"],
+            "subjects": [c["label"]],
+        })
+    print("    陆家嘴深度：%d 篇" % len(out))
+    return out
+
+
 # ------------------------------------------------------------------ 财经快讯补充源
 def sina_7x24(size=60):
     """新浪财经 7×24：财联社被限流时的主力补充，财经属性强。"""
@@ -288,9 +357,15 @@ def ndrc_news(days=4):
     return out
 
 
-def collect(theme_names, limit=12, days=3):
-    """合并三源，按重要度打分排序，返回待渲染的消息列表与错误信息。"""
+def collect(theme_names, limit=12, days=3, deep_limit=3):
+    """合并快讯与深度文章：快讯按重要度排序在前，深度的陆家嘴文章置末并标记。"""
     items, errors = [], []
+    deep_items = []
+    try:
+        deep_items = ljz_deep(theme_names, limit=deep_limit)
+    except Exception as exc:  # noqa: BLE001
+        errors.append("陆家嘴深度抓取失败：%s" % exc)
+        print("    陆家嘴深度失败 %s" % exc)
     for name, fn in (("财联社", cls_telegraph), ("新浪财经", sina_7x24), ("同花顺快讯", ths_news),
                      ("中国政府网", gov_yaowen), ("国家发展改革委", ndrc_news)):
         try:
@@ -333,9 +408,14 @@ def collect(theme_names, limit=12, days=3):
     official.sort(key=lambda x: (-x["score"], x["time"]), reverse=False)
     feeds.sort(key=lambda x: (-x["score"], x["time"]), reverse=False)
     picked = official[:max(4, limit // 2)] + feeds[:max(4, limit - limit // 2)]
-    picked = picked[:limit]
+    keep = max(4, limit - len(deep_items))
+    picked = picked[:keep]
     picked.sort(key=lambda x: (-x["score"], x["time"]), reverse=False)
-    return picked, errors
+    for i, it in enumerate(deep_items):
+        it["tags"] = _tags_from(it["title"], it["body"], theme_names)
+        it["score"] = 3
+        it["rank_deep"] = i
+    return picked + deep_items, errors
 
 
 if __name__ == "__main__":
