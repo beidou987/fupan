@@ -717,6 +717,7 @@ def build(dates, raw):
                 "url": it.get("url") or "",
                 "deep": bool(it.get("deep")),
                 "col": it.get("col") or "",
+                "policy": bool(it.get("policy")),
             })
     if not briefs:
         DEGRADED.append("消息面新闻源不可用，回退收盘行情速览")
