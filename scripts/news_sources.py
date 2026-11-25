@@ -39,6 +39,27 @@ KEYWORDS = [
               "央行", "证监会", "商务部", "国家统计局", "十五五", "规划", "条例", "意见"]),
 ]
 
+# 与股市无关的官媒要闻：农业、气象、民生、外事礼节、人事纪检等，命中即丢弃
+OFF_TOPIC = ["秋冬种", "冬季田管", "夏粮", "秋粮", "春耕", "播种", "稻谷", "小麦", "玉米",
+             "气象", "台风", "暴雨", "降雪", "寒潮", "供暖", "春运", "暑运",
+             "会见", "会谈", "贺电", "致电", "致贺", "访问", "致辞", "出席", "开幕", "闭幕",
+             "任命", "免职", "辞去", "纪委", "监察", "巡视", "审计署", "表彰", "追授", "逝世", "讣告",
+             "全国秋冬种", "粮食安全", "耕地", "乡村振兴", "老旧小区", "医保目录"]
+
+# 命中任一即视为与股市/板块相关
+MARKET_WORDS = ["A股", "沪深", "上证", "深证", "创业板", "科创板", "北交所", "两市", "大盘", "指数",
+                "涨停", "连板", "龙头", "题材", "板块", "概念", "主力", "游资", "北向", "融资",
+                "IPO", "上市", "再融资", "定增", "减持", "回购", "增持", "并购", "重组", "借壳",
+                "业绩", "预告", "财报", "营收", "净利润", "订单", "中标", "签约", "供货", "涨价",
+                "提价", "降价", "产能", "扩产", "停产", "检修", "出口", "进口", "关税", "制裁",
+                "补贴", "退税", "试点", "规划", "招标", "集采", "医保", "限价", "牌照",
+                "证监会", "央行", "人民银行", "交易所", "国资委", "工信部", "发改委",
+                "财政部", "商务部", "能源局", "药监局", "网信办", "数据局", "国防科工局",
+                "半导体", "芯片", "算力", "人工智能", "机器人", "新能源", "光伏", "储能",
+                "锂电", "固态电池", "医药", "创新药", "军工", "航天", "卫星", "低空",
+                "消费", "白酒", "地产", "基建", "券商", "银行", "保险", "有色金属", "稀土",
+                "煤炭", "钢铁", "化工", "电力", "核电", "氢能", "汽车", "智能驾驶"]
+
 POLICY_WORDS = ["国务院", "中共中央", "政治局", "国常会", "国家发展改革委", "发改委",
                 "工业和信息化部", "工信部", "财政部", "中国人民银行", "央行", "证监会",
                 "商务部", "国家统计局", "十五五", "规划", "条例", "意见", "通知", "试点"]
@@ -73,21 +94,43 @@ def _tags_from(title, body, theme_names):
     return out[:3]
 
 
+def _relevant(it, theme_names):
+    """是否与股票/板块相关：先排除民生外事类，再看是否命中市场或产业关键词。"""
+    hay = (it["title"] + " " + it["body"])[:800]
+    if any(w in it["title"] for w in OFF_TOPIC):
+        return False
+    if it.get("stock_list"):
+        return True
+    if any(n and len(n) >= 2 and n in hay for n in theme_names):
+        return True
+    return any(w in hay for w in MARKET_WORDS)
+
+
 def _score(source_kind, level, title, body):
+    """财经相关度：政策主体与市场行为词加权，财联社 A/B 级加权。"""
     score = 0
     if source_kind == "official":
-        score += 3
-    if level == "A":
-        score += 4
-    elif level == "B":
         score += 2
-    hay = title + body[:200]
+    if level == "A":
+        score += 5
+    elif level == "B":
+        score += 3
+    hay = title + body[:300]
     score += sum(1 for w in POLICY_WORDS if w in hay)
+    score += 2 * sum(1 for w in ("涨停", "并购", "重组", "减持", "回购", "增持", "订单", "中标",
+                                 "涨价", "提价", "制裁", "关税", "试点", "规划") if w in hay)
+    if "陆家嘴" in hay:
+        score += 3
+    # A 股本地消息优先于海外行情
+    score += sum(1 for w in ("A股", "沪指", "上证", "深证", "创业板", "科创板", "两市",
+                             "涨停", "板块", "概念", "北向", "券商", "公募", "私募",
+                             "个股", "龙虎榜", "游资", "主力") if w in hay)
+    score -= sum(1 for w in ("美股", "纳指", "道指", "标普", "英伟达", "美联储", "美债", "欧股") if w in hay)
     return score
 
 
 # ------------------------------------------------------------------ 财联社
-def cls_telegraph(rn=50):
+def cls_telegraph(rn=100, category="important"):
     """财联社电报。接口需要先取首页 cookie（acw_tc），再按 sha1+md5 规则签名。"""
     s = requests.Session()
     s.headers.update({"User-Agent": UA_PC, "Referer": "https://www.cls.cn/",
@@ -99,7 +142,7 @@ def cls_telegraph(rn=50):
         return hashlib.md5(hashlib.sha1(raw.encode()).hexdigest().encode()).hexdigest()
 
     p = {"app": "CailianpressWeb", "os": "web", "sv": "8.4.6",
-         "rn": str(rn), "category": "", "last_time": "", "refresh_type": "1"}
+         "rn": str(rn), "category": category, "last_time": "", "refresh_type": "1"}
     p["sign"] = sign(p)
     d = s.get("https://www.cls.cn/v1/roll/get_roll_list", params=p, timeout=20).json()
     rows = ((d.get("data") or {}).get("roll_data")) or []
@@ -126,6 +169,64 @@ def cls_telegraph(rn=50):
             "date": datetime.fromtimestamp(ts, CST).strftime("%Y-%m-%d"),
             "url": "https://www.cls.cn/detail/%s" % r.get("id") if r.get("id") else "",
             "subjects": [x.get("subject_name") for x in (r.get("subjects") or []) if x.get("subject_name")][:3],
+        })
+    if len(out) < 10 and category:
+        return cls_telegraph(rn=rn, category="")
+    return out
+
+
+
+# ------------------------------------------------------------------ 财经快讯补充源
+def sina_7x24(size=60):
+    """新浪财经 7×24：财联社被限流时的主力补充，财经属性强。"""
+    r = requests.get("https://zhibo.sina.com.cn/api/zhibo/feed", params={
+        "page": 1, "page_size": size, "zhibo_id": 152, "tag_id": 0, "dire": "f", "dpc": 1,
+    }, headers={"User-Agent": UA_PC, "Referer": "https://finance.sina.com.cn/"}, timeout=25)
+    lst = (((r.json().get("result") or {}).get("data") or {}).get("feed") or {}).get("list") or []
+    out = []
+    for it in lst:
+        body = _clean(it.get("rich_text") or it.get("text") or "")
+        if len(body) < 8:
+            continue
+        m = re.match(r"^【([^】]{4,44})】(.*)$", body)
+        title = m.group(1) if m else body.split("。")[0][:48]
+        if len(title) < 8:
+            continue
+        stamp = (it.get("create_time") or "")[:16]
+        if len(stamp) < 16:
+            continue
+        out.append({
+            "source": "新浪财经", "kind": "feed", "level": "",
+            "title": title, "body": body, "time": stamp, "date": stamp[:10],
+            "url": it.get("docurl") or "", "subjects": [],
+        })
+    return out
+
+
+def ths_news(pagesize=50):
+    """同花顺快讯：偏 A 股个股与板块，带 A股/港股标签。"""
+    r = requests.get("https://news.10jqka.com.cn/tapp/news/push/stock/",
+                     params={"page": 1, "tag": "", "track": "website", "pagesize": pagesize},
+                     headers={"User-Agent": UA_PC}, timeout=25)
+    lst = ((r.json().get("data") or {}).get("list")) or []
+    out = []
+    for it in lst:
+        title = _clean(it.get("title") or "")
+        if len(title) < 8:
+            continue
+        try:
+            ts = int(it.get("ctime") or 0)
+        except Exception:  # noqa: BLE001
+            ts = 0
+        if not ts:
+            continue
+        when = datetime.fromtimestamp(ts, CST)
+        out.append({
+            "source": "同花顺", "kind": "feed", "level": "",
+            "title": title, "body": _clean(it.get("digest") or ""),
+            "time": when.strftime("%Y-%m-%d %H:%M"), "date": when.strftime("%Y-%m-%d"),
+            "url": it.get("url") or "",
+            "subjects": [x.get("name") for x in (it.get("tags") or []) if x.get("name")][:3],
         })
     return out
 
@@ -190,7 +291,8 @@ def ndrc_news(days=4):
 def collect(theme_names, limit=12, days=3):
     """合并三源，按重要度打分排序，返回待渲染的消息列表与错误信息。"""
     items, errors = [], []
-    for name, fn in (("财联社", cls_telegraph), ("中国政府网", gov_yaowen), ("国家发展改革委", ndrc_news)):
+    for name, fn in (("财联社", cls_telegraph), ("新浪财经", sina_7x24), ("同花顺快讯", ths_news),
+                     ("中国政府网", gov_yaowen), ("国家发展改革委", ndrc_news)):
         try:
             got = fn()
             items.extend(got)
@@ -199,6 +301,19 @@ def collect(theme_names, limit=12, days=3):
             errors.append("%s抓取失败：%s" % (name, exc))
             print("    新闻源失败 %s %s" % (name, exc))
 
+    raw_items = list(items)
+    raw_n = len(items)
+    items = [it for it in items if _relevant(it, theme_names)]
+    dropped = raw_n - len(items)
+    if dropped:
+        print("    剔除与股市无关的要闻 %d 条" % dropped)
+    # 过滤后过少时放宽：只要不是民生外事类，且命中政策主体或产业词即可
+    if len(items) < 5:
+        loose = [it for it in raw_items if not any(w in it["title"] for w in OFF_TOPIC)
+                 and any(w in (it["title"] + it["body"])[:800] for w in MARKET_WORDS + POLICY_WORDS)]
+        if len(loose) > len(items):
+            print("    相关新闻过少，放宽为政策/产业口径：%d 条" % len(loose))
+            items = loose
     for it in items:
         it["tags"] = _tags_from(it["title"], it["body"], theme_names)
         it["score"] = _score(it["kind"], it["level"], it["title"], it["body"])
