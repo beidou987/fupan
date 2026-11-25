@@ -473,32 +473,63 @@ def build(dates, raw):
         out.sort(key=lambda s: (-s["lbc"], s["time"]))
         return out
 
+    # ---- 30 个交易日矩阵：同一份同花顺板块数据，横轴为日期
+    hist = load_opt("history.json")
+    hist_dates = [d for d in (hist.get("dates") or []) if d] or list(dates)
+    hist_blocks = hist.get("blocks") or {}
+    hist_pools = hist.get("pools") or {}
+    sector_dates = [mmdd(d) for d in hist_dates]
+    if not hist_blocks:
+        DEGRADED.append("历史题材数据不可用，题材页只保留最近两日")
+
+    block_index = {}
+    for d in hist_dates:
+        dd = mmdd(d)
+        for b in (hist_blocks.get(d) or []):
+            nm = (b.get("name") or "").strip()
+            if bad_theme(nm):
+                continue
+            st = b.get("stocks") or []
+            block_index.setdefault(nm, {})[dd] = {
+                "count": len(st) or int(b.get("limit_up_num") or 0),
+                "pct": round(float(b.get("change") or 0), 2),
+                "maxLbc": max([int(s.get("lbc") or 1) for s in st] or [0]),
+            }
+
+    recent5 = hist_dates[-5:] if len(hist_dates) >= 5 else hist_dates
+    scored = []
+    for nm, cells in block_index.items():
+        total = sum(int((cells.get(mmdd(d)) or {}).get("count") or 0) for d in recent5)
+        if total:
+            scored.append((nm, total))
+    scored.sort(key=lambda kv: (-kv[1], kv[0]))
+    top = [nm for nm, _ in scored[:15]] or list(top)
+
+    def day_stocks(name, d):
+        for b in (hist_blocks.get(d) or []):
+            if (b.get("name") or "").strip() == name and b.get("stocks"):
+                return b["stocks"]
+        return []
+
     sector_rows = []
     for name in top:
-        row = {"name": name, "code": universe.get(name, "")}
+        row = {"name": name, "code": universe.get(name, ""),
+               "cells": dict(block_index.get(name) or {})}
+        latest = row["cells"].get(mmdd(d2)) or {}
         row["stocks"] = {}
-        for d in (d1, d2):
-            v = ths_by_day.get(d, {}).get(name)
-            cell = {"count": None, "first": None, "lian": None, "maxLbc": None, "pct": None, "src": None}
-            if v:
-                cell.update({"count": v["count"], "first": v["first"], "lian": v["lian"],
-                             "maxLbc": v["maxLbc"], "pct": v["pct"], "src": "ths"})
-                if v["stocks"]:
-                    row["stocks"][mmdd(d)] = v["stocks"]
-            if not cell["src"]:
-                fill = em_stocks(name, d)
-                if fill:
-                    cell.update({"count": len(fill),
-                                 "first": sum(1 for s in fill if s["lbc"] < 2),
-                                 "lian": sum(1 for s in fill if s["lbc"] >= 2),
-                                 "maxLbc": max(s["lbc"] for s in fill), "src": "em"})
-                    row["stocks"][mmdd(d)] = fill
-            row["d" + mmdd(d)] = cell
-        latest = row.get("d" + mmdd(d2)) or {}
-        row.update({"pct": latest.get("pct"), "count": latest.get("count") or 0,
-                    "first": latest.get("first") or 0, "lian": latest.get("lian") or 0,
-                    "maxLbc": latest.get("maxLbc") or 0})
-        row["hasPrev"] = bool(row.get("d" + mmdd(d1), {}).get("count"))
+        for d in (d0, d1, d2):
+            pool_d = day_stocks(name, d)
+            if pool_d:
+                row["stocks"][mmdd(d)] = pool_d
+        cur = row["stocks"].get(mmdd(d2)) or []
+        row.update({
+            "pct": latest.get("pct"),
+            "count": latest.get("count") or len(cur),
+            "first": sum(1 for s in cur if int(s.get("lbc") or 1) < 2),
+            "lian": sum(1 for s in cur if int(s.get("lbc") or 1) >= 2),
+            "maxLbc": latest.get("maxLbc") or max([int(s.get("lbc") or 1) for s in cur] or [0]),
+        })
+        row["hasPrev"] = bool(row["cells"].get(mmdd(d1)))
         sector_rows.append(row)
 
     # 个股详情：合并东财涨停池（成交额/总市值）+ 同花顺（类型/原因/封单/换手）+ 腾讯快照（开高低收）
@@ -627,6 +658,24 @@ def build(dates, raw):
          "rows": [r for _, r in shou]},
     ]
 
+    # ---- 30 个交易日的梯队格子：逐日回填涨停 / 断板
+    ladder_dates = [mmdd(d) for d in hist_dates]
+    day_index = {}
+    for d in hist_dates:
+        day_index[mmdd(d)] = {x["c"]: x for x in ((hist_pools.get(d) or {}).get("list") or [])}
+    for group in groups:
+        for row in group["rows"]:
+            code = row.get("code")
+            cells = {}
+            for i, dd in enumerate(ladder_dates):
+                info = (day_index.get(dd) or {}).get(code)
+                if info:
+                    lbc = int(info.get("lbc") or 1)
+                    cells[dd] = {"t": "首板" if lbc < 2 else "%d连板" % lbc, "k": "state"}
+                elif i and (day_index.get(ladder_dates[i - 1]) or {}).get(code):
+                    cells[dd] = {"t": "断板", "k": "broken"}
+            row["cells"] = cells
+
     # 消息面：真实新闻（财联社电报 / 中国政府网 / 发改委），缺失时回退盘后速览
     briefs = []
     if news_items:
@@ -676,13 +725,13 @@ def build(dates, raw):
         "generatedAt": now.strftime("%Y-%m-%dT%H:%M:%S+08:00"),
         "refreshStamp": "%s 15:30" % d2,
         "dates": dates,
-        "sectorDates": [mmdd(d1), mmdd(d2)],
+        "sectorDates": sector_dates,
         "indices": idx,
         "sectorRows": sector_rows,
         "stocks": stocks_detail,
         "briefs": briefs,
         "billboard": bills,
-        "ladder": {"dates": [mmdd(d) for d in dates], "maxLbc": max_lbc, "groups": groups},
+        "ladder": {"dates": ladder_dates, "maxLbc": max_lbc, "groups": groups},
         "sources": [
             {"name": "东方财富", "detail": "指数日线、涨停池（成交额/总市值/连板数）、龙虎榜明细"},
             {"name": "同花顺", "detail": "题材板块与当日涨停成分股（涨停类型、涨停原因、开板次数、封单额、换手率、流通市值）"},
