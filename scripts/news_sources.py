@@ -113,6 +113,89 @@ def concept_vocab():
     return _CONCEPT_VOCAB
 
 
+# 部委/国务院层面政策：主体 + 动作同时出现才算政策消息，避免把企业公告当政策
+POLICY_ACTORS = ["国务院", "中共中央", "政治局", "国常会", "工信部", "工业和信息化部", "商务部",
+                 "国家发展改革委", "发改委", "中国人民银行", "央行", "证监会", "财政部",
+                 "能源局", "药监局", "中央网信办", "网信办", "数据局", "国资委", "科技部",
+                 "国防科工局", "海关总署", "农业农村部", "交通运输部", "住房城乡建设部",
+                 "生态环境部", "民航局", "国家统计局", "市场监管总局", "税务总局", "医保局"]
+POLICY_VERBS = ["印发", "批复", "获批", "试点", "规划", "意见", "条例", "办法", "通知", "通告",
+                "公告", "决定", "方案", "细则", "清单", "目录", "部署", "专项行动", "支持",
+                "规范", "整治", "公布", "启动", "实施"]
+
+MIIT_KW = ["印发", "批复", "获批", "试点", "通知", "意见", "规划", "公告", "办法", "方案",
+           "通告", "清单", "名单", "部署", "行动", "标准", "条例", "公布", "支持"]
+MIIT_SKIP = ["巡视", "约谈", "招聘", "任职", "党组", "党建", "学习贯彻", "表彰", "讣告",
+             "党风廉政", "纪检监察", "任免", "走进", "研究课题", "座谈", "调研", "培训班",
+             "工作会议", "动员部署会", "吹风会", "发布会"]
+
+
+def _pub_time(html_text, days_ok):
+    for pat in (r'<meta[^>]+name="firstpublishedtime"[^>]+content="([^"]{6,30})"',
+                r'<meta[^>]+name="pubdate"[^>]+content="([^"]{6,30})"',
+                r'<meta[^>]+property="article:published_time"[^>]+content="([^"]{6,30})"'):
+        m = re.search(pat, html_text)
+        if m:
+            return m.group(1).strip()[:16].replace("T", " ")
+    m = re.search(r"(20\d{2}-\d{2}-\d{2})\s*(\d{2}:\d{2})?", html_text)
+    if m:
+        return (m.group(1) + " " + (m.group(2) or "00:00"))[:16]
+    return ""
+
+
+def miit_news(days=7, limit=6):
+    """工信部官网：抓首页遇到印发/批复/试点等政策动作的条目，取正文发布时间。"""
+    r = requests.get("https://www.miit.gov.cn/", headers={"User-Agent": UA_PC}, timeout=25, verify=False)
+    r.encoding = r.apparent_encoding or "utf-8"
+    seen, cands = set(), []
+    for href, inner in re.findall(r'<a[^>]+href="([^"]+)"[^>]*>\s*([^<]{8,90})\s*</a>', r.text):
+        title = _clean(inner)
+        if len(title) < 8 or any(w in title for w in MIIT_SKIP):
+            continue
+        if not any(k in title for k in MIIT_KW):
+            continue
+        if not href.startswith("http"):
+            href = "https://www.miit.gov.cn" + href
+        if "miit.gov.cn" not in href:
+            continue
+        norm = re.sub(r"^https?://(www\.)?miit\.gov\.cn", "", href)
+        if norm in seen:
+            continue
+        seen.add(norm)
+        cands.append({"title": title, "url": href})
+        if len(cands) >= limit * 3:
+            break
+    since = (datetime.now(CST) - timedelta(days=days)).strftime("%Y-%m-%d")
+    out = []
+    for c in cands:
+        if len(out) >= limit:
+            break
+        try:
+            d = requests.get(c["url"], headers={"User-Agent": UA_PC}, timeout=20, verify=False)
+            d.encoding = d.apparent_encoding or "utf-8"
+            pub = _pub_time(d.text, since)
+        except Exception:  # noqa: BLE001
+            pub = ""
+        if not pub or pub[:10] < since:
+            continue
+        out.append({
+            "source": "工业和信息化部", "kind": "policy", "level": "",
+            "title": c["title"], "body": "",
+            "time": pub, "date": pub[:10], "url": c["url"],
+            "subjects": [],
+        })
+    return out
+
+
+def _is_policy(it):
+    if it.get("kind") == "policy":
+        return True
+    title = it.get("title") or ""
+    if not any(a in title for a in POLICY_ACTORS):
+        return False
+    return any(v in title for v in POLICY_VERBS)
+
+
 POLICY_WORDS = ["国务院", "中共中央", "政治局", "国常会", "国家发展改革委", "发改委",
                 "工业和信息化部", "工信部", "财政部", "中国人民银行", "央行", "证监会",
                 "商务部", "国家统计局", "十五五", "规划", "条例", "意见", "通知", "试点"]
@@ -162,6 +245,8 @@ def _relevant(it, theme_names):
     hay = (it["title"] + " " + it["body"])[:800]
     if any(w in it["title"] for w in OFF_TOPIC):
         return False
+    if it.get("kind") == "policy" or _is_policy(it):
+        return True
     if _is_stock_notice(it["title"]):
         return False
     if it.get("stock_list"):
@@ -570,7 +655,8 @@ def collect(theme_names, limit=9, days=3, deep_limit=4):
         errors.append("陆家嘴深度抓取失败：%s" % exc)
         print("    陆家嘴深度失败 %s" % exc)
     for name, fn in (("财联社", cls_telegraph), ("新浪财经", sina_7x24), ("同花顺快讯", ths_news),
-                     ("中国政府网", gov_yaowen), ("国家发展改革委", ndrc_news)):
+                     ("中国政府网", gov_yaowen), ("国家发展改革委", ndrc_news),
+                     ("工业和信息化部", miit_news)):
         try:
             got = fn()
             items.extend(got)
@@ -594,8 +680,13 @@ def collect(theme_names, limit=9, days=3, deep_limit=4):
             items = loose
     for it in items:
         it["tags"] = _tags_from(it["title"], it["body"], theme_names)
+        it["policy"] = _is_policy(it)
         it["score"] = _score(it["kind"], it["level"], it["title"], it["body"])
         it["score"] += 2 * min(4, len(it["tags"]))
+        if it["policy"]:
+            it["score"] += 8          # 政策消息优先级最高
+            if not it["tags"]:
+                it["tags"] = ["政策"]  # 政策本身没有对应板块时，保留政策标签
 
     # 同题去重：标题前 12 字相同视为同一条
     seen, uniq = set(), []
@@ -614,9 +705,15 @@ def collect(theme_names, limit=9, days=3, deep_limit=4):
     # 全局按影响力排序，同一来源最多 3 条，避免单一源刷屏
     per_src, picked = {}, []
     feed_limit = max(3, limit - len(deep_items))
+    policies = [x for x in tagged if x.get("policy")][:2]   # 政策保底 2 条
+    for it in policies:
+        picked.append(it)
+        per_src[it.get("source") or ""] = per_src.get(it.get("source") or "", 0) + 1
     for it in tagged:
         if len(picked) >= feed_limit:
             break
+        if it.get("policy") and it in policies:
+            continue
         src = it.get("source") or ""
         if per_src.get(src, 0) >= 3:
             continue
