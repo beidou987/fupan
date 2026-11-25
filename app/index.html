@@ -463,6 +463,7 @@
   /* ---- 消息面来源行 ---- */
   .news-meta{display:flex;align-items:center;gap:8px;margin-top:7px;font-size:10.5px;color:var(--dim);flex-wrap:wrap}
   .news-meta .src.deep{color:#f7d488;border-color:rgba(247,212,136,.55);background:rgba(247,212,136,.10)}
+  .news-meta .src.policy{color:#8ab4f8;border-color:rgba(138,180,248,.55);background:rgba(138,180,248,.10)}
   .scope-row{display:flex;align-items:center;gap:8px;margin:0 0 8px;overflow-x:auto;scrollbar-width:none}
   .scope-row::-webkit-scrollbar{display:none}
   .news-item[data-deep="1"]{box-shadow:inset 2px 0 0 rgba(247,212,136,.85)}
@@ -636,6 +637,7 @@
             <button type="button" data-news-scope="all" aria-pressed="true">全部</button>
             <button type="button" data-news-scope="feed" aria-pressed="false">快讯</button>
             <button type="button" data-news-scope="deep" aria-pressed="false">深度</button>
+            <button type="button" data-news-scope="policy" aria-pressed="false">国家政策</button>
           </div>
         </div>
         <div class="news-list" id="newsList"></div>
@@ -982,6 +984,8 @@
       list = list.filter(function (n) { return !!n.deep; });
     } else if (scope === 'feed') {
       list = list.filter(function (n) { return !n.deep; });
+    } else if (scope === 'policy') {
+      list = list.filter(function (n) { return !!n.policy; });
     }
     const q = store.get('newsQuery').trim().toLowerCase();
     if (!q) return list;
@@ -1002,7 +1006,8 @@
       const deepAll = NEWS.filter(function (n) { return !!n.deep; }).length;
       count.textContent = q
         ? items.length + ' 条 · 搜索“' + q + '”'
-        : items.length + ' 条 · ' + (scope === 'deep' ? '陆家嘴深度' : '深度 ' + deepAll + ' 篇');
+        : items.length + ' 条 · ' + (scope === 'deep' ? '陆家嘴深度'
+          : (scope === 'policy' ? '国家政策' : '深度 ' + deepAll + ' 篇'));
     }
     if (!items.length) {
       list.innerHTML = '<div class="empty" style="border:0;background:none"><strong>没有匹配的消息</strong><span>换个题材、概念或个股关键词试试，例如“芯片”“AI”“储能”。</span></div>';
@@ -1021,6 +1026,7 @@
         '<div class="news-tags">' + tags + '</div>' +
         '<div class="news-meta">' + (item.source ? '<span class="src">' + esc(item.source) + '</span>' : '') +
         (item.deep ? '<span class="src deep">' + esc(item.col || '深度') + '</span>' : '') +
+        (item.policy && !item.deep ? '<span class="src policy">政策</span>' : '') +
         '<span>' + esc(item.time || '') + '</span></div></div>' +
         '</article>';
     }).join('');
@@ -1040,6 +1046,7 @@
       '<div class="news-meta" style="margin-top:12px">' +
       (item.source ? '<span class="src">' + esc(item.source) + '</span>' : '') +
       (item.deep ? '<span class="src deep">' + esc(item.col || '深度') + '</span>' : '') +
+      (item.policy && !item.deep ? '<span class="src policy">政策</span>' : '') +
       '<span>' + esc(item.time || '') + '</span></div>' +
       (item.url
         ? '<div class="sheet-actions"><a class="btn primary" href="' + esc(item.url) + '" target="_blank" rel="noopener">阅读原文</a>'
