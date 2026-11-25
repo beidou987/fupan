@@ -696,6 +696,7 @@ def build(dates, raw):
                 "time": it.get("time") or "",
                 "source": it.get("source") or "",
                 "url": it.get("url") or "",
+                "deep": bool(it.get("deep")),
             })
     if not briefs:
         DEGRADED.append("消息面新闻源不可用，回退收盘行情速览")
