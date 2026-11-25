@@ -127,6 +127,102 @@ def excluded(name):
     return any(k in name for k in EXCLUDE)
 
 
+# ---------------------------------------------------------------- 同花顺 / 腾讯
+THS_HEADERS = {
+    "User-Agent": ("Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) "
+                   "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1"),
+    "Referer": "https://data.10jqka.com.cn/",
+}
+THS_FIELDS = ("199112,10,9001,330323,330324,330325,9002,330329,133971,133970,"
+              "1968584,3475914,9003,9004")
+
+
+def hms(value):
+    """把 unix 秒或 HHMMSS 整数统一成 HH:MM:SS。"""
+    if value in (None, "", 0, "0"):
+        return ""
+    try:
+        n = int(float(value))
+    except Exception:  # noqa: BLE001
+        return ""
+    if n > 100000000:  # unix 秒
+        return datetime.fromtimestamp(n, CST).strftime("%H:%M:%S")
+    s = str(n).zfill(6)
+    return "%s:%s:%s" % (s[0:2], s[2:4], s[4:6])
+
+
+def ths_limit_up(compact):
+    """同花顺涨停池：涨停类型、涨停原因、开板次数、封单额、换手率、流通市值、几日几板。"""
+    r = requests.get("https://data.10jqka.com.cn/dataapi/limit_up/limit_up_pool", params={
+        "page": 1, "limit": 200, "field": THS_FIELDS, "filter": "HS,GEM2STAR",
+        "order_field": "330324", "order_type": 0, "date": compact,
+    }, headers=THS_HEADERS, timeout=25)
+    d = r.json()
+    if d.get("status_code") not in (0, "0"):
+        raise RuntimeError("同花顺涨停池返回 %s" % d.get("status_msg"))
+    data = d.get("data") or {}
+    items = data.get("info") or []
+    total = int((data.get("page") or {}).get("total") or len(items))
+    return total, items
+
+
+def ths_blocks(compact):
+    """同花顺题材板块：板块涨跌幅 + 当日涨停成分股（含涨停原因、首封时间、几日几板）。"""
+    r = requests.get("https://data.10jqka.com.cn/dataapi/limit_up/block_top", params={
+        "filter": "HS,GEM2STAR", "date": compact,
+    }, headers=THS_HEADERS, timeout=25)
+    d = r.json()
+    if d.get("status_code") not in (0, "0"):
+        raise RuntimeError("同花顺板块返回 %s" % d.get("status_msg"))
+    return d.get("data") or []
+
+
+def _qq_sym(code):
+    if code[0] in "69":
+        return "sh" + code
+    if code[:2] in ("43", "83", "87", "92") or code[0] == "8":
+        return "bj" + code
+    return "sz" + code
+
+
+def tencent_snapshot(codes):
+    """腾讯批量快照（每批 60 只）：开盘/最高/最低/收盘/成交额/换手/流通市值/总市值。"""
+    out = {}
+    codes = [c for c in codes if c]
+    for i in range(0, len(codes), 60):
+        batch = codes[i:i + 60]
+        try:
+            r = requests.get("https://qt.gtimg.cn/q=" + ",".join(_qq_sym(c) for c in batch),
+                             headers={"User-Agent": H["User-Agent"], "Referer": "https://gu.qq.com/"},
+                             timeout=20)
+            r.encoding = "gbk"
+        except Exception as exc:  # noqa: BLE001
+            print("    腾讯快照失败（%s），个股开高低收留空" % exc)
+            DEGRADED.append("腾讯快照不可用，个股开高低收字段留空")
+            continue
+        for line in r.text.split(";"):
+            line = line.strip()
+            if '="' not in line:
+                continue
+            body = line.split('="', 1)[1].rstrip('"')
+            f = body.split("~")
+            if len(f) < 46:
+                continue
+
+            def num(idx):
+                try:
+                    return float(f[idx])
+                except Exception:  # noqa: BLE001
+                    return None
+
+            out[f[2]] = {
+                "open": num(5), "close": num(3), "high": num(33), "low": num(34),
+                "pct": num(32), "amount": round((num(37) or 0) / 1e4, 2),
+                "turnover": num(38), "floatMv": num(44), "totalMv": num(45),
+            }
+    return out
+
+
 # ---------------------------------------------------------------- 抓取
 def index_klines(beg, end):
     """指数日 K：优先东方财富，失败改腾讯。返回 ({code: {date: {close, pct}}}, 交易日序列)。"""
@@ -280,40 +376,181 @@ def build(dates, raw):
 
     d0, d1, d2 = dates
 
-    # 按涨停家数聚合主题板块
-    agg = {}
-    for d in dates:
-        per = {}
-        for x in pools[d]["pool"]:
-            for b in boards.get(x["c"], []):
-                if b not in TOPIC_ALLOW:
+    # 题材板块：优先同花顺（板块涨跌幅 + 当日涨停成分股），缺失时回退东财聚合
+    def load_opt(name):
+        p = os.path.join(raw, name)
+        if os.path.exists(p):
+            try:
+                return json.load(open(p, encoding="utf-8"))
+            except Exception:  # noqa: BLE001
+                return {}
+        return {}
+
+    ths_blocks_raw = load_opt("ths-blocks.json")
+    ths_pools_raw = load_opt("ths-limitup.json")
+    snapshots = load_opt("snapshots.json")
+    news_items = load_opt("news.json")
+
+    def bad_theme(name):
+        return (not name) or excluded(name) or len(name.strip()) < 2 or name.endswith("板块")
+
+    def theme_snapshot(d):
+        """当日题材 -> {pct, count, first, lian, maxLbc, stocks[]}，来源同花顺板块涨停股。"""
+        rows = {}
+        for b in (ths_blocks_raw.get(d) or []):
+            name = (b.get("name") or "").strip()
+            if bad_theme(name):
+                continue
+            stocks = []
+            for s in (b.get("stock_list") or []):
+                if not s.get("code"):
                     continue
-                item = per.setdefault(b, {"count": 0, "first": 0, "lian": 0, "maxLbc": 0})
-                item["count"] += 1
-                lbc = x.get("lbc") or 1
-                item["lian" if lbc >= 2 else "first"] += 1
-                item["maxLbc"] = max(item["maxLbc"], lbc)
-        agg[d] = per
+                lbc = int(s.get("continue_num") or 1)
+                stocks.append({
+                    "c": s["code"], "n": s.get("name") or s["code"],
+                    "pct": round(s.get("change_rate") or 0, 2),
+                    "time": hms(s.get("first_limit_up_time")),
+                    "lbc": lbc,
+                    "label": s.get("high") or ("首板" if lbc < 2 else "%d连板" % lbc),
+                    "type": s.get("limit_up_type") or "",
+                    "reason": s.get("reason_type") or "",
+                })
+            stocks.sort(key=lambda x: (-x["lbc"], x["time"]))
+            rows[name] = {
+                "pct": round((b.get("change") or 0), 2),
+                "count": len(stocks) or int(b.get("limit_up_num") or 0),
+                "first": sum(1 for s in stocks if s["lbc"] < 2),
+                "lian": sum(1 for s in stocks if s["lbc"] >= 2),
+                "maxLbc": max([s["lbc"] for s in stocks] or [0]),
+                "stocks": stocks,
+            }
+        return rows
 
-    candidates = [(b, v) for b, v in agg[d2].items() if v["count"] >= 2]
-    candidates.sort(key=lambda kv: (-kv[1]["count"], -kv[1]["maxLbc"], kv[0]))
-    top = [b for b, _ in candidates[:7]]
+    ths_by_day = {d: theme_snapshot(d) for d in dates}
 
-    def cell(b, d):
-        v = agg.get(d, {}).get(b) or {"count": 0, "first": 0, "lian": 0, "maxLbc": 0}
-        ser = board_klines.get(b, {}).get("series", {}).get(d)
-        return {
-            "count": v["count"], "first": v["first"], "lian": v["lian"],
-            "maxLbc": v["maxLbc"],
-            "pct": round(ser["pct"], 2) if ser and ser.get("pct") is not None else None,
-        }
+    if ths_by_day.get(d2):
+        ranked = sorted(((n, v) for n, v in ths_by_day[d2].items() if v["count"] >= 2),
+                        key=lambda kv: (-kv[1]["count"], -kv[1]["maxLbc"], kv[0]))
+        top = [n for n, _ in ranked[:8]]
+    else:
+        # 回退：东财概念板块聚合（无当日涨停股明细）
+        DEGRADED.append("同花顺题材板块不可用，题材页回退东财概念聚合（无涨停股明细）")
+        agg = {}
+        for d in dates:
+            per = {}
+            for x in pools[d]["pool"]:
+                for b in boards.get(x["c"], []):
+                    if b not in TOPIC_ALLOW:
+                        continue
+                    item = per.setdefault(b, {"count": 0, "first": 0, "lian": 0, "maxLbc": 0})
+                    item["count"] += 1
+                    lbc = x.get("lbc") or 1
+                    item["lian" if lbc >= 2 else "first"] += 1
+                    item["maxLbc"] = max(item["maxLbc"], lbc)
+            agg[d] = per
+        ranked = sorted(((b, v) for b, v in agg[d2].items() if v["count"] >= 2),
+                        key=lambda kv: (-kv[1]["count"], -kv[1]["maxLbc"], kv[0]))
+        top = [b for b, _ in ranked[:8]]
+        for d in dates:
+            ths_by_day[d] = {}
+            for b, v in (agg.get(d) or {}).items():
+                ths_by_day[d][b] = {"pct": None, "count": v["count"], "first": v["first"],
+                                    "lian": v["lian"], "maxLbc": v["maxLbc"], "stocks": []}
+
+    def em_stocks(theme, d):
+        """同花顺当日未给出该题材成分股时，用东财涨停池按个股概念反推（口径标 em）。"""
+        out = []
+        for x in (pools.get(d) or {}).get("pool", []):
+            if theme not in (boards.get(x["c"]) or []):
+                continue
+            lbc = int(x.get("lbc") or 1)
+            out.append({
+                "c": x["c"], "n": x["n"], "pct": round(x.get("zdp") or 0, 2),
+                "time": hms(x.get("fbt")), "lbc": lbc,
+                "label": "首板" if lbc < 2 else "%d连板" % lbc,
+                "type": "", "reason": "",
+            })
+        out.sort(key=lambda s: (-s["lbc"], s["time"]))
+        return out
 
     sector_rows = []
-    for b in top:
-        row = {"name": b, "code": universe.get(b, "")}
-        row["d" + mmdd(d1)] = cell(b, d1)
-        row["d" + mmdd(d2)] = cell(b, d2)
+    for name in top:
+        row = {"name": name, "code": universe.get(name, "")}
+        row["stocks"] = {}
+        for d in (d1, d2):
+            v = ths_by_day.get(d, {}).get(name)
+            cell = {"count": None, "first": None, "lian": None, "maxLbc": None, "pct": None, "src": None}
+            if v:
+                cell.update({"count": v["count"], "first": v["first"], "lian": v["lian"],
+                             "maxLbc": v["maxLbc"], "pct": v["pct"], "src": "ths"})
+                if v["stocks"]:
+                    row["stocks"][mmdd(d)] = v["stocks"]
+            if not cell["src"]:
+                fill = em_stocks(name, d)
+                if fill:
+                    cell.update({"count": len(fill),
+                                 "first": sum(1 for s in fill if s["lbc"] < 2),
+                                 "lian": sum(1 for s in fill if s["lbc"] >= 2),
+                                 "maxLbc": max(s["lbc"] for s in fill), "src": "em"})
+                    row["stocks"][mmdd(d)] = fill
+            row["d" + mmdd(d)] = cell
+        latest = row.get("d" + mmdd(d2)) or {}
+        row.update({"pct": latest.get("pct"), "count": latest.get("count") or 0,
+                    "first": latest.get("first") or 0, "lian": latest.get("lian") or 0,
+                    "maxLbc": latest.get("maxLbc") or 0})
+        row["hasPrev"] = bool(row.get("d" + mmdd(d1), {}).get("count"))
         sector_rows.append(row)
+
+    # 个股详情：合并东财涨停池（成交额/总市值）+ 同花顺（类型/原因/封单/换手）+ 腾讯快照（开高低收）
+    stocks_detail = {}
+    # 倒序遍历：同一只股票优先保留最新交易日的详情（含腾讯快照）
+    for d in reversed(dates):
+        ths_map = {}
+        for s in ((ths_pools_raw.get(d) or {}).get("list") or []):
+            if s.get("code"):
+                ths_map[s["code"]] = s
+        for x in (pools.get(d) or {}).get("pool", []):
+            code = x["c"]
+            if code in stocks_detail:
+                continue
+            t = ths_map.get(code) or {}
+            # 腾讯快照只对应最新交易日；历史交易日不用快照，避免开高低收串日
+            snap = (snapshots.get(code) or {}) if d == d2 else {}
+
+            def num(a, b, scale=1.0):
+                v = a if a not in (None, "") else b
+                try:
+                    return round(float(v) / scale, 2)
+                except Exception:  # noqa: BLE001
+                    return None
+
+            stocks_detail[code] = {
+                "code": code,
+                "name": x.get("n") or t.get("name") or code,
+                "date": d,
+                "pct": round(float(x.get("zdp") or t.get("change_rate") or 0), 2),
+                "price": round((x.get("p") or 0) / 1000.0, 2) if x.get("p") else t.get("latest"),
+                "type": t.get("limit_up_type") or "",
+                "reason": t.get("reason_type") or "",
+                "first": hms(t.get("first_limit_up_time")) or hms(x.get("fbt")),
+                "last": hms(t.get("last_limit_up_time")) or hms(x.get("lbt")),
+                "openTimes": int(t.get("open_num") if t.get("open_num") is not None else (x.get("zbc") or 0)),
+                "seal": num(t.get("order_amount"), x.get("fund"), 1e8),
+                "turnover": round(float(t.get("turnover_rate") or x.get("hs") or 0), 2),
+                "amount": num(x.get("amount"), (snap.get("amount") or 0) * 1e8, 1e8),
+                "floatMv": num(t.get("currency_value"), x.get("ltsz") or (snap.get("floatMv") or 0) * 1e8, 1e8),
+                "totalMv": num(x.get("tshare"), (snap.get("totalMv") or 0) * 1e8, 1e8),
+                "open": snap.get("open"), "high": snap.get("high"),
+                "low": snap.get("low"), "close": snap.get("close"),
+                "days": t.get("high_days") or ("%d连板" % (x.get("lbc") or 1)
+                                               if (x.get("lbc") or 1) >= 2 else "首板"),
+            }
+
+    theme_of = {}
+    for name, v in ths_by_day.get(d2, {}).items():
+        for s in v["stocks"]:
+            theme_of.setdefault(s["c"], []).append(name)
+    theme_of_names = set(theme_of.keys())
 
     # 指数
     idx = {}
@@ -365,8 +602,10 @@ def build(dates, raw):
         concept_text = thematic[0] if thematic else ""
         if info["hybk"] and info["hybk"] != concept_text:
             concept_text = (concept_text + "+" + info["hybk"]) if concept_text else info["hybk"]
-        row = {"name": info["n"], "side": {"t": "龙虎", "c": "green"} if code in bills_map[d2] else None,
-               "concepts": concept_text or "—", "boards": thematic}
+        row = {"name": info["n"], "code": code,
+               "side": {"t": "龙虎", "c": "green"} if code in bills_map[d2] else None,
+               "concepts": concept_text or "—", "boards": thematic,
+               "themes": theme_of.get(code, [])}
         for d in dates:
             row["d" + mmdd(d)] = day_cell(code, pool_by_day[d], d)
         if code in pool_by_day[d2]:
@@ -388,54 +627,49 @@ def build(dates, raw):
          "rows": [r for _, r in shou]},
     ]
 
-    # 消息面：按收盘数据自动生成的盘后速览
-    def day_top(d):
-        cs = [(b, agg[d][b]) for b in top if b in agg.get(d, {})]
-        cs.sort(key=lambda kv: (-kv[1]["count"], -kv[1]["maxLbc"]))
-        return cs[0] if cs else (None, None)
-
-    briefs, rank = [], 1
-    for d in reversed(dates):
-        sh, sz, cy = idx.get("000001.SH", {}).get(d, {}), idx.get("399001.SZ", {}).get(d, {}), idx.get("399006.SZ", {}).get(d, {})
-        p = sh.get("pct")
-        tc = pools[d]["tc"]
-        briefs.append({
-            "id": "b%d" % rank, "rank": rank, "hot": True,
-            "tone": "red" if (p or 0) > 0 else "green",
-            "title": ("%s收盘：沪指%+.2f%%，涨停 %d 家" % (md_cn(d), p, tc)) if p is not None else ("%s收盘：涨停 %d 家" % (md_cn(d), tc)),
-            "tags": [["上证指数", "hot"], ["收盘复盘", "concept"]],
-            "summary": "上证指数收 %s（%s%%），深证成指 %s（%s%%），创业板指 %s（%s%%）；两市涨停 %d 家。数据日期 %s，指数来自东方财富指数日线，涨停池来自东方财富公开接口。"
-                       % (sh.get("close", "—"), ("%+.2f" % p) if p is not None else "—",
-                          sz.get("close", "—"), ("%+.2f" % sz["pct"]) if sz.get("pct") is not None else "—",
-                          cy.get("close", "—"), ("%+.2f" % cy["pct"]) if cy.get("pct") is not None else "—",
-                          tc, d),
-        })
-        rank += 1
-        b, v = day_top(d)
-        if b:
-            bc = cell(b, d)
-            pct_txt = "%+.2f%%" % bc["pct"] if bc.get("pct") is not None else "—"
+    # 消息面：真实新闻（财联社电报 / 中国政府网 / 发改委），缺失时回退盘后速览
+    briefs = []
+    if news_items:
+        tone_map = {"official": "brown", "cls": "red"}
+        for i, it in enumerate(news_items[:12], 1):
+            tags = []
+            for t in (it.get("tags") or [])[:3]:
+                tags.append([t, "hot" if t in theme_of_names else "concept"])
+            if not tags:
+                tags = [[it.get("source") or "市场消息", "concept"]]
             briefs.append({
-                "id": "b%d" % rank, "rank": rank, "hot": v["count"] >= 5,
-                "tone": "brown" if rank == 2 else ("red" if (bc.get("pct") or 0) > 0 else "green"),
-                "title": "%s题材首位：%s涨停 %d 家，板块 %s" % (md_cn(d), b, v["count"], pct_txt),
-                "tags": [[b, "hot"], ["首板 %d" % v["first"], "concept"], ["连板 %d" % v["lian"], "concept"]],
-                "summary": "%s当日涨停 %d 家（首板 %d 家、连板 %d 家），板块涨跌幅 %s。按涨停家数在主题板块中排序居首；统计口径为东方财富涨停池与概念板块日线。"
-                           % (b, v["count"], v["first"], v["lian"], pct_txt),
+                "id": "b%d" % i, "rank": i,
+                "hot": (it.get("score") or 0) >= 4,
+                "tone": tone_map.get(it.get("kind"), "dark") if i <= 3 else "dark",
+                "title": it.get("title") or "",
+                "tags": tags,
+                "summary": it.get("body") or "",
+                "time": it.get("time") or "",
+                "source": it.get("source") or "",
+                "url": it.get("url") or "",
+            })
+    if not briefs:
+        DEGRADED.append("消息面新闻源不可用，回退收盘行情速览")
+        rank = 1
+        for d in reversed(dates):
+            sh = idx.get("000001.SH", {}).get(d, {})
+            sz = idx.get("399001.SZ", {}).get(d, {})
+            cy = idx.get("399006.SZ", {}).get(d, {})
+            p = sh.get("pct")
+            tc = pools[d]["tc"]
+            briefs.append({
+                "id": "b%d" % rank, "rank": rank, "hot": True,
+                "tone": "red" if (p or 0) > 0 else "green",
+                "title": ("%s收盘：沪指%+.2f%%，涨停 %d 家" % (md_cn(d), p, tc)) if p is not None
+                         else ("%s收盘：涨停 %d 家" % (md_cn(d), tc)),
+                "tags": [["上证指数", "hot"], ["收盘复盘", "concept"]],
+                "summary": "沪指 %s（%s%%）· 深成指 %s（%s%%）· 创业板 %s（%s%%）· 涨停 %d 家。"
+                           % (sh.get("close", "—"), ("%+.2f" % p) if p is not None else "—",
+                              sz.get("close", "—"), ("%+.2f" % sz["pct"]) if sz.get("pct") is not None else "—",
+                              cy.get("close", "—"), ("%+.2f" % cy["pct"]) if cy.get("pct") is not None else "—", tc),
+                "time": "%s 15:00" % d, "source": "收盘复盘", "url": "",
             })
             rank += 1
-        top_l = lian[0][1]["name"] if lian else "—"
-        top_bill = (bills.get(d) or {}).get("rows") or []
-        dlbc = max([(x.get("lbc") or 1) for x in pools[d]["pool"]] or [0])
-        briefs.append({
-            "id": "b%d" % rank, "rank": rank, "hot": False, "tone": "dark",
-            "title": "%s梯队与龙虎榜：最高 %d 连板，净买入首位 %s" % (md_cn(d), dlbc, top_bill[0]["name"] if top_bill else "—"),
-            "tags": [["连板梯队", "hot"], ["龙虎榜", "concept"]],
-            "summary": "%s最高连板 %s（%d 连板）；龙虎榜净买入首位 %s，净买入 %s 亿元。数据来自东方财富涨停池与龙虎榜明细。"
-                       % (md_cn(d), top_l, dlbc, top_bill[0]["name"] if top_bill else "—",
-                          top_bill[0]["net"] if top_bill else "—"),
-        })
-        rank += 1
 
     now = datetime.now(CST)
     return {
@@ -445,16 +679,19 @@ def build(dates, raw):
         "sectorDates": [mmdd(d1), mmdd(d2)],
         "indices": idx,
         "sectorRows": sector_rows,
+        "stocks": stocks_detail,
         "briefs": briefs,
         "billboard": bills,
         "ladder": {"dates": [mmdd(d) for d in dates], "maxLbc": max_lbc, "groups": groups},
         "sources": [
-            {"name": "东方财富", "detail": "指数日线（000001.SH / 399001.SZ / 399006.SZ）、涨停池、概念板块日线、个股所属板块、龙虎榜明细"},
+            {"name": "东方财富", "detail": "指数日线、涨停池（成交额/总市值/连板数）、龙虎榜明细"},
+            {"name": "同花顺", "detail": "题材板块与当日涨停成分股（涨停类型、涨停原因、开板次数、封单额、换手率、流通市值）"},
+            {"name": "腾讯证券", "detail": "个股收盘快照（开盘/最高/最低/收盘/成交额/流通市值/总市值）"},
+            {"name": "财联社 / 中国政府网 / 国家发展改革委", "detail": "消息面电报与官方要闻（标题、时间、原文链接）"},
         ],
         "gaps": [
             "板块涨跌家数与资金流接口未开通，题材页以真实首板/连板结构替代",
             "炸板池明细不可用，回封标记取自涨停池 zbc 字段",
-            "消息面为据收盘行情自动生成的盘后速览，不是新闻原文",
         ],
         "dataDate": d2,
     }
@@ -482,6 +719,11 @@ def validate(data, dates):
         errs.append("龙虎榜明细过少：%d 行" % len(bill.get("rows") or []))
     if not data["briefs"]:
         errs.append("消息面为空")
+    if len(data.get("stocks") or {}) < 20:
+        errs.append("个股详情过少：%d 只" % len(data.get("stocks") or {}))
+    # 新闻源失败不阻断行情更新：只降级提示，避免一次抓取失败导致整站停更
+    if not any((b.get("url") or "") for b in data["briefs"]):
+        data["gaps"].append("消息面本次未取到新闻原文，展示的是收盘行情速览")
     return errs
 
 
@@ -671,6 +913,52 @@ def run_online(dates):
     old_idx = os.path.join(RAW, "indices.json")
     if os.path.exists(old_idx):
         os.rename(old_idx, old_idx + ".ifind.bak")
+
+    print("9/11 同花顺题材板块与涨停池")
+    ths_blocks_raw, ths_pools_raw = {}, {}
+    for d in dates:
+        compact = d.replace("-", "")
+        try:
+            ths_pools_raw[d] = {"total": 0, "list": []}
+            total, items = ths_limit_up(compact)
+            ths_pools_raw[d] = {"total": total, "list": items}
+            print("    %s 同花顺涨停 %d 家 / 明细 %d 行" % (d, total, len(items)))
+        except Exception as exc:  # noqa: BLE001
+            print("    同花顺涨停池失败", d, exc)
+            DEGRADED.append("同花顺涨停池不可用（%s），个股细节字段减少" % d)
+        try:
+            ths_blocks_raw[d] = ths_blocks(compact)
+            print("    %s 题材板块 %d 个" % (d, len(ths_blocks_raw[d])))
+        except Exception as exc:  # noqa: BLE001
+            ths_blocks_raw[d] = []
+            print("    同花顺题材板块失败", d, exc)
+            DEGRADED.append("同花顺题材板块不可用（%s），题材页回退东财聚合" % d)
+    atomic_write(os.path.join(RAW, "ths-limitup.json"), json.dumps(ths_pools_raw, ensure_ascii=False))
+    atomic_write(os.path.join(RAW, "ths-blocks.json"), json.dumps(ths_blocks_raw, ensure_ascii=False))
+
+    print("10/11 腾讯个股快照")
+    codes = sorted({x["c"] for p in pools.values() for x in p["pool"]})
+    snaps = tencent_snapshot(codes)
+    print("    快照 %d / %d 只" % (len(snaps), len(codes)))
+    atomic_write(os.path.join(RAW, "snapshots.json"), json.dumps(snaps, ensure_ascii=False))
+
+    print("11/11 消息面新闻")
+    theme_names = []
+    for b in (ths_blocks_raw.get(dates[-1]) or []):
+        nm = (b.get("name") or "").strip()
+        if nm and not excluded(nm) and not nm.endswith("板块"):
+            theme_names.append(nm)
+    try:
+        sys.path.insert(0, os.path.join(ROOT, "scripts"))
+        import news_sources  # noqa: E402
+        got, nerrs = news_sources.collect(theme_names, limit=12)
+        print("    消息 %d 条" % len(got))
+        for e in nerrs:
+            DEGRADED.append("消息面：" + e)
+        atomic_write(os.path.join(RAW, "news.json"), json.dumps(got, ensure_ascii=False))
+    except Exception as exc:  # noqa: BLE001
+        print("    消息面抓取失败", exc)
+        DEGRADED.append("消息面新闻抓取失败：%s" % exc)
 
     data = build(dates, RAW)
     seen = set()

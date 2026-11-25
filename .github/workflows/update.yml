@@ -1,6 +1,7 @@
 name: 每日更新行情数据
 
-# 北京时间 15:10（UTC 07:10）；GitHub Actions 的 cron 固定按 UTC 计时。
+# 北京时间 15:10（UTC 07:10）触发；GitHub Actions 的 cron 固定用 UTC。
+# 周一到周五运行；法定节假日也会跑，但取到的仍是最近交易日数据，没有变化就不会产生提交。
 on:
   schedule:
     - cron: '10 7 * * 1-5'
@@ -8,9 +9,11 @@ on:
 
 permissions:
   contents: write
+  pages: write
+  id-token: write
 
 concurrency:
-  group: update-data
+  group: pages
   cancel-in-progress: false
 
 jobs:
@@ -31,7 +34,7 @@ jobs:
       - name: 抓取并构建数据
         run: python scripts/market_update.py
 
-      - name: 提交数据
+      - name: 提交更新
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
@@ -43,13 +46,21 @@ jobs:
             git push
           fi
 
-      - name: 发布到 gh-pages
-        run: |
-          cd app
-          git init -q
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git checkout -q -b gh-pages
-          git add -A
-          git commit -q -m "deploy: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
-          git push -f "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" gh-pages
+  deploy:
+    needs: update
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: 检出最新提交
+        uses: actions/checkout@v4
+
+      - name: 打包站点
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: app
+
+      - name: 发布到 GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

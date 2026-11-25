@@ -459,6 +459,47 @@
 .is-ready #bootSplash{display:none}
 .is-data-missing #bootSplash i{display:none}
 .is-data-missing #bootSplash span{color:#e2544c;letter-spacing:.02em}
+
+  /* ---- 消息面来源行 ---- */
+  .news-meta{display:flex;align-items:center;gap:8px;margin-top:7px;font-size:10.5px;color:var(--dim);flex-wrap:wrap}
+  .news-meta .src{padding:1px 6px;border-radius:4px;border:1px solid var(--line-strong);color:#aab6cc;background:rgba(255,255,255,.03)}
+  a.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;text-decoration:none}
+
+  /* ---- 题材详情弹层 ---- */
+  .sheet[data-variant="tall"]{max-height:92vh;max-height:92dvh}
+  .detail-title{text-align:center;margin:2px 0 2px}
+  .detail-title b{display:block;font-size:19px;font-weight:600;letter-spacing:.02em}
+  .detail-title span{display:block;margin-top:3px;font-size:11.5px;color:#d8a33a;letter-spacing:.04em}
+  .tabs{display:flex;gap:7px;flex-wrap:wrap;justify-content:center;margin:12px 0 8px}
+  .tab-pill{padding:6px 12px;border-radius:999px;border:1px solid var(--line-strong);background:rgba(255,255,255,.04);color:var(--muted);font-size:12px;line-height:1.2}
+  .tab-pill[aria-selected="true"]{background:linear-gradient(160deg,rgba(139,123,255,.34),rgba(91,72,214,.34));border-color:rgba(139,123,255,.7);color:#fff}
+  .sort-row{display:flex;align-items:center;gap:18px;justify-content:center;font-size:12px;color:var(--dim);margin:6px 0 4px}
+  .sort-opt{display:inline-flex;align-items:center;gap:6px;background:none;border:0;color:var(--dim);font-size:12px}
+  .sort-opt[aria-selected="true"]{color:#e8edf5}
+  .sort-dot{width:13px;height:13px;border-radius:50%;border:2px solid rgba(255,255,255,.32);flex:none}
+  .sort-opt[aria-selected="true"] .sort-dot{border-color:#f7d488;background:#f7d488;box-shadow:0 0 0 3px rgba(247,212,136,.16)}
+  .detail-hint{text-align:center;font-size:11px;color:var(--dim);margin:2px 0 10px}
+  .lt-row{display:flex;gap:10px;padding:11px 0;border-top:1px dashed var(--line-strong)}
+  .lt-label{width:52px;flex:none;text-align:center;padding-top:8px}
+  .lt-label b{display:block;font-size:12.5px;color:#e8edf5;font-weight:600}
+  .lt-label span{display:block;margin-top:2px;font-size:10.5px;color:var(--dim)}
+  .lt-grid{flex:1;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px}
+  .lt-card{position:relative;border:1px solid var(--line);border-radius:9px;background:rgba(255,255,255,.045);padding:7px 5px 6px;text-align:center;color:inherit;min-width:0}
+  .lt-card:active{background:rgba(139,123,255,.16)}
+  .lt-card b{display:block;font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .lt-card .pct{display:block;font-size:11px;margin-top:2px;font-variant-numeric:tabular-nums}
+  .lt-card .tm{display:block;font-size:10px;color:var(--dim);margin-top:1px;font-variant-numeric:tabular-nums}
+  .lt-card .flag{position:absolute;top:-1px;right:-1px;font-size:9px;padding:1px 3px;border-radius:0 8px 0 6px;background:#26406b;color:#cfe0ff}
+
+  /* ---- 个股详情 ---- */
+  .kv-row{display:flex;gap:10px;padding:8px 0;font-size:13px;border-bottom:1px solid var(--line)}
+  .kv-row span{width:74px;flex:none;color:var(--dim);font-size:12.5px}
+  .kv-row b{flex:1;font-weight:500;color:#dfe6f2;line-height:1.5}
+  .stk-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:12px;overflow:hidden;margin:12px 0 6px}
+  .stk-grid div{background:rgba(12,20,36,.92);padding:9px 10px;display:flex;justify-content:space-between;gap:8px;font-size:12.5px;align-items:baseline}
+  .stk-grid span{color:var(--dim);flex:none}
+  .stk-grid b{font-variant-numeric:tabular-nums;font-weight:500}
+  .stk-foot{font-size:11px;color:var(--dim);line-height:1.6;margin-top:8px}
 </style>
 </head>
 <body>
@@ -530,7 +571,7 @@
         </div>
         <div class="feed-meta"><span id="newsDate">收盘 · 数据加载中</span><span id="newsCount">9 条 · 按热度</span></div>
         <div class="news-list" id="newsList"></div>
-        <p class="feed-foot" id="feedFoot"><strong>数据来源：</strong>东方财富指数日线、涨停池与龙虎榜；消息面为收盘行情自动生成的盘后速览，不构成投资建议。</p>
+        <p class="feed-foot" id="feedFoot"><strong>数据来源：</strong>消息面取自财联社电报、中国政府网与发改委要闻；行情取东方财富、同花顺、腾讯证券公开接口。不构成投资建议。</p>
         <button class="fab" type="button" data-action="refreshNews" aria-label="刷新消息面">
           <svg class="icon" aria-hidden="true"><use href="#i-refresh"/></svg>
         </button>
@@ -690,7 +731,9 @@
     newsQuery: '',
     sectorQuery: '',
     dataDate: '',
-    ladderDate: ''
+    ladderDate: '',
+    sectorTab: 'limit',
+    sectorSort: 'board'
   });
 
   const VIEW_TITLES = { news: '消息面', sectors: '题材轮动', data: '大数据', ladder: '涨停梯队', me: '会员中心' };
@@ -743,10 +786,11 @@
   const sheetTitle = document.getElementById('sheetTitle');
   let lastFocused = null;
 
-  function openSheet(title, html) {
+  function openSheet(title, html, variant) {
     lastFocused = document.activeElement;
     sheetTitle.textContent = title;
     sheetBody.innerHTML = html;
+    sheet.dataset.variant = variant || '';
     scrim.hidden = false;
     sheet.setAttribute('aria-hidden', 'false');
     requestAnimationFrame(function () {
@@ -758,6 +802,7 @@
   }
 
   function closeSheet() {
+    sheet.dataset.variant = '';
     scrim.classList.remove('is-open');
     sheet.classList.remove('is-open');
     sheet.setAttribute('aria-hidden', 'true');
@@ -822,6 +867,11 @@
 
   const NEWS_DATE = DATES[2];
   const NEWS = window.REAL_DATA.briefs;
+  const STOCKS = window.REAL_DATA.stocks || {};
+  const SECTOR_STOCKS = {};
+  (window.REAL_DATA.sectorRows || []).forEach(function (row) {
+    SECTOR_STOCKS[row.name] = row.stocks || {};
+  });
 
   const SECTORS = window.REAL_DATA.sectorRows.map(function (row) {
     return {
@@ -877,7 +927,9 @@
       return '<article class="news-item" data-tone="' + item.tone + '" data-news-id="' + item.id + '" tabindex="0" role="button" aria-label="第' + item.rank + '条：' + esc(item.title) + '">' +
         '<div class="news-rank">' + rank + '</div>' +
         '<div><h3 class="news-title">' + esc(item.title) + (item.hot ? flameIcon() : '') + '</h3>' +
-        '<div class="news-tags">' + tags + '</div></div>' +
+        '<div class="news-tags">' + tags + '</div>' +
+        '<div class="news-meta">' + (item.source ? '<span class="src">' + esc(item.source) + '</span>' : '') +
+        '<span>' + esc(item.time || '') + '</span></div></div>' +
         '</article>';
     }).join('');
   }
@@ -893,8 +945,12 @@
     UI.openSheet('第 ' + item.rank + ' 条 · 消息解读',
       '<div class="chip-row" style="margin-bottom:12px">' + tags + '</div>' +
       '<p class="sheet-copy">' + esc(item.summary) + '</p>' +
-      '<p class="sheet-copy" style="margin-top:10px;color:var(--dim);font-size:12px">速览说明：由收盘行情自动生成，数字来自真实指数、涨停池与龙虎榜。数据日期 ' + NEWS_DATE + '。</p>' +
-      '<div class="sheet-actions">' +
+      '<div class="news-meta" style="margin-top:12px">' +
+      (item.source ? '<span class="src">' + esc(item.source) + '</span>' : '') +
+      '<span>' + esc(item.time || '') + '</span></div>' +
+      (item.url
+        ? '<div class="sheet-actions"><a class="btn primary" href="' + esc(item.url) + '" target="_blank" rel="noopener">阅读原文</a>'
+        : '<div class="sheet-actions">') +
       '<button class="btn ' + (isFav ? 'ghost' : 'primary') + '" type="button" data-fav-news="' + item.id + '">' +
       '<svg class="icon" aria-hidden="true"><use href="#i-star"/></svg><span>' + (isFav ? '已收藏，点击取消' : '收藏这条消息') + '</span></button>' +
       '<button class="btn ghost" type="button" data-close-sheet>关闭</button></div>');
@@ -905,11 +961,13 @@
     const cls = ['sector-cell'];
     if (block.highlight) cls.push('is-highlight');
     const pct = (block.pct === null || block.pct === undefined) ? '—' : ((block.pct > 0 ? '+' : '') + block.pct.toFixed(2) + '%');
-    const structure = block.count > 0 ? ('首板 ' + block.first + ' · 连板 ' + block.lian) : '无涨停';
-    return '<button class="' + cls.join(' ') + '" type="button" data-sector="' + esc(block.name) + '" data-sector-day="' + day + '" aria-label="' + esc(block.name) + '，涨停 ' + block.count + ' 家，板块 ' + pct + '">' +
+    const unknown = block.count === null || block.count === undefined;
+    const structure = unknown ? '未进当日涨停前列' : (block.count > 0 ? ('首板 ' + block.first + ' · 连板 ' + block.lian) : '无涨停') + (block.src === 'em' ? ' · 东财口径' : '');
+    const countText = unknown ? '—' : block.count;
+    return '<button class="' + cls.join(' ') + '" type="button" data-sector="' + esc(block.name) + '" data-sector-day="' + day + '" aria-label="' + esc(block.name) + '，涨停 ' + countText + ' 家，板块 ' + pct + '">' +
       '<div class="sector-name">' + esc(block.name) + '</div>' +
       '<div class="sector-sub">' + structure + '</div>' +
-      '<div class="sector-stats"><b>' + block.count + '</b> 涨停 <b class="' + (block.pct === null || block.pct === undefined ? 'dim' : (block.pct >= 0 ? 'up' : 'down')) + '">' + pct + '</b></div>' +
+      '<div class="sector-stats"><b>' + countText + '</b> 涨停 <b class="' + (block.pct === null || block.pct === undefined ? 'dim' : (block.pct >= 0 ? 'up' : 'down')) + '">' + pct + '</b></div>' +
       '</button>';
   }
 
@@ -951,25 +1009,168 @@
     if (count) count.textContent = rows.length + ' 个主题 · 2 个交易日';
   }
 
-  function openSector(name, day) {
-    let block = null;
-    SECTORS.forEach(function (row) {
-      if (row.left.name === name) block = row.left;
-      if (row.right.name === name) block = row.right;
+  let sectorCtx = null;
+
+  function sectorStocks() {
+    if (!sectorCtx) return [];
+    const pool = (SECTOR_STOCKS[sectorCtx.name] || {})[sectorCtx.day] || [];
+    return pool.slice();
+  }
+
+  function sectorDetailHtml() {
+    if (!sectorCtx) return '';
+    const name = sectorCtx.name;
+    const day = sectorCtx.day;
+    const row = (window.REAL_DATA.sectorRows || []).filter(function (r) { return r.name === name; })[0] || {};
+    const cell = row['d' + day] || {};
+    const pool = sectorStocks();
+    const tab = store.get('sectorTab') || 'limit';
+    const sort = store.get('sectorSort') || 'board';
+    const pctText = (cell.pct === null || cell.pct === undefined) ? '—' : ((cell.pct > 0 ? '+' : '') + cell.pct.toFixed(2) + '%');
+    const counts = {
+      limit: pool.length,
+      first: pool.filter(function (s) { return s.lbc < 2; }).length,
+      lian: pool.filter(function (s) { return s.lbc >= 2; }).length,
+      high: pool.filter(function (s) { return s.lbc >= 3; }).length
+    };
+    let items = pool.slice();
+    if (tab === 'first') items = items.filter(function (s) { return s.lbc < 2; });
+    if (tab === 'lian') items = items.filter(function (s) { return s.lbc >= 2; });
+    if (tab === 'high') items = items.filter(function (s) { return s.lbc >= 3; });
+    items.sort(function (a, b) {
+      if (sort === 'time') return String(a.time).localeCompare(String(b.time));
+      return (b.lbc - a.lbc) || String(a.time).localeCompare(String(b.time));
     });
-    if (!block) return;
-    const pct = (block.pct === null || block.pct === undefined) ? '—' : ((block.pct > 0 ? '+' : '') + block.pct.toFixed(2) + '%');
-    UI.openSheet(name,
-      '<div class="sheet-stat">' +
-      '<div><strong class="up">' + block.count + '</strong><span>涨停家数</span></div>' +
-      '<div><strong class="' + ((block.pct || 0) >= 0 ? 'up' : 'down') + '">' + pct + '</strong><span>板块涨跌幅</span></div>' +
-      '<div><strong>' + block.first + ' / ' + block.lian + '</strong><span>首板 / 连板</span></div>' +
-      '</div>' +
-      '<p class="sheet-copy">' + esc(name) + ' 在 ' + day + ' 的收盘快照：涨停 ' + block.count + ' 家（首板 ' + block.first + '、连板 ' + block.lian + '），板块涨跌幅 ' + pct + '。</p>' +
-      '<p class="sheet-copy" style="margin-top:10px;color:var(--dim);font-size:12px">板块涨跌幅取概念板块日线；涨停家数取当日涨停池，按个股所属板块去重统计。</p>' +
-      '<div class="sheet-actions">' +
-      '<button class="btn primary" type="button" data-sector-highlight="' + day + '" data-close-after="1">设为该日主列</button>' +
-      '<button class="btn ghost" type="button" data-close-sheet>关闭</button></div>');
+
+    const groups = [];
+    if (sort === 'time') {
+      groups.push({ label: '按时间', sub: items.length + ' 只', items: items });
+    } else {
+      const map = {};
+      items.forEach(function (s) { (map[s.lbc] = map[s.lbc] || []).push(s); });
+      Object.keys(map).map(Number).sort(function (a, b) { return b - a; }).forEach(function (lbc) {
+        groups.push({ label: lbc < 2 ? '首板' : lbc + '连板', sub: map[lbc].length + ' 只', items: map[lbc] });
+      });
+    }
+
+    const tabDefs = [
+      ['limit', '涨停(' + counts.limit + ')'],
+      ['first', '首板(' + counts.first + ')'],
+      ['lian', '连板(' + counts.lian + ')'],
+      ['high', '高标(' + counts.high + ')']
+    ];
+
+    const tabs = tabDefs.map(function (t) {
+      return '<button class="tab-pill" type="button" data-sector-tab="' + t[0] + '" aria-selected="' + (tab === t[0]) + '">' + t[1] + '</button>';
+    }).join('');
+
+    const sorts = [['board', '按连板数'], ['time', '按涨停时间']].map(function (s) {
+      return '<button class="sort-opt" type="button" data-sector-sort="' + s[0] + '" aria-selected="' + (sort === s[0]) + '">' +
+        '<i class="sort-dot"></i>' + s[1] + '</button>';
+    }).join('');
+
+    const body = groups.map(function (group) {
+      if (!group.items.length) return '';
+      const cards = group.items.map(function (s) {
+        const cls = s.pct >= 0 ? 'up' : 'down';
+        const flag = s.lbc >= 3 ? '<i class="flag">高标</i>' : '';
+        return '<button class="lt-card" type="button" data-stock="' + esc(s.c) + '" data-stock-day="' + day + '">' + flag +
+          '<b>' + esc(s.n) + '</b>' +
+          '<span class="pct ' + cls + '">' + (s.pct > 0 ? '+' : '') + Number(s.pct).toFixed(2) + '%</span>' +
+          '<span class="tm">' + esc(s.time || '—') + '</span></button>';
+      }).join('');
+      return '<div class="lt-row"><div class="lt-label"><b>' + group.label + '</b><span>' + group.sub + '</span></div>' +
+        '<div class="lt-grid">' + cards + '</div></div>';
+    }).join('');
+
+    const empty = !items.length
+      ? '<div class="empty" style="border:0;background:none"><strong>' + (pool.length ? '该分组暂无涨停股' : '暂无该题材成分股明细') + '</strong>' +
+        '<span>' + (pool.length ? '切到“涨停”看全部涨停成分股。' : '同花顺题材接口只提供当日涨停前列板块的成分股；该日该题材未进入前列，或数据源当日缺失。') + '</span></div>'
+      : '';
+
+    return '<div class="detail-title"><b>' + esc(name) + '</b><span>' + (row.hasPrev === false && day !== SD1 ? '前一日未进涨停前列' : '') + '</span></div>' +
+      '<div class="tabs">' + tabs + '</div>' +
+      '<p class="detail-hint">涨停指当日涨停的成分股 · 板块 <b class="' + classOf(cell.pct) + '">' + pctText + '</b></p>' +
+      (cell.src === 'em' ? '<p class="detail-hint" style="color:#d8a33a">该日该题材未进入同花顺涨停前列，成分股按东财涨停池概念归类，不含板块涨跌幅</p>' : '') +
+      '<div class="sort-row">' + sorts + '</div>' +
+      (empty || body) +
+      '<p class="stk-foot">涨停家数与成分股来自同花顺涨停池（板块涨停统计）；点击卡片查看个股涨停细节。</p>' +
+      '<div class="sheet-actions"><button class="btn ghost" type="button" data-close-sheet>关闭</button></div>';
+  }
+
+  function classOf(value) {
+    if (value === null || value === undefined) return 'dim';
+    return value >= 0 ? 'up' : 'down';
+  }
+
+  function refreshSectorDetail() {
+    const el = document.getElementById('sectorDetailBody');
+    if (el) el.innerHTML = sectorDetailHtml();
+  }
+
+  function openSector(name, day) {
+    sectorCtx = { name: name, day: day };
+    store.set({ sectorTab: 'limit', sectorSort: 'board' });
+    UI.openSheet(name, '<div id="sectorDetailBody">' + sectorDetailHtml() + '</div>', 'tall');
+  }
+
+  /* 个股详情：涨停类型、涨停原因与当日快照 */
+  function openStock(code, fallback) {
+    const s = STOCKS[code] || {};
+    const name = s.name || (fallback && fallback.n) || code;
+    const date = s.date || (fallback && fallback.day) || DATES[2];
+    const has = !!s.code;
+    const pctText = has ? ((s.pct > 0 ? '+' : '') + Number(s.pct).toFixed(2) + '%') : ((fallback && fallback.pct) ? '+' + Number(fallback.pct).toFixed(2) + '%' : '—');
+    const themes = (window.REAL_DATA.sectorRows || []).filter(function (r) {
+      return ((r.stocks || {})[mmdd(date)] || []).some(function (x) { return x.c === code; });
+    }).map(function (r) { return r.name; }).slice(0, 5);
+
+    function cell(label, value, extraClass) {
+      const text = (value === null || value === undefined || value === '') ? '—' : value;
+      return '<div><span>' + label + '</span><b class="' + (extraClass || '') + '">' + text + '</b></div>';
+    }
+    function money(v) { return (v === null || v === undefined) ? '—' : (Number(v).toFixed(2) + ' 亿'); }
+    function price(v) { return (v === null || v === undefined) ? '—' : Number(v).toFixed(2); }
+
+    const grid =
+      cell('首封', s.first || '—') +
+      cell('终封', s.last || '—') +
+      cell('开板', has ? s.openTimes + ' 次' : '—') +
+      cell('封单', money(s.seal)) +
+      cell('开盘', price(s.open), pctClass(s.open, s.close)) +
+      cell('收盘', price(s.close), 'up') +
+      cell('最高', price(s.high), 'up') +
+      cell('最低', price(s.low), 'down') +
+      cell('换手率', has ? Number(s.turnover).toFixed(2) + '%' : '—') +
+      cell('成交额', money(s.amount)) +
+      cell('流通市值', money(s.floatMv)) +
+      cell('总市值', money(s.totalMv));
+
+    UI.openSheet(name, '<div class="sheet-body-inner">' +
+      '<div class="detail-title"><b>' + esc(name) + '</b><span>' + date + ' · ' + esc(s.days || '') + '</span></div>' +
+      '<div style="text-align:center;margin:6px 0 12px"><span class="' + (has && s.pct >= 0 ? 'up' : 'down') + '" style="font-size:20px;font-variant-numeric:tabular-nums">' + pctText + '</span>' +
+      '<span class="dim" style="font-size:11.5px;margin-left:6px">' + esc(code) + '</span></div>' +
+      (has
+        ? '<div class="kv-row"><span>涨停类型</span><b>' + esc(s.type || '—') + '</b></div>' +
+          '<div class="kv-row"><span>涨停原因</span><b>' + esc(s.reason || '—') + '</b></div>'
+        : '<div class="kv-row"><span>提示</span><b>该股仅在前一交易日涨停，快照字段只覆盖最新交易日</b></div>') +
+      '<div class="stk-grid">' + grid + '</div>' +
+      (themes.length ? '<div class="chip-row" style="margin-top:10px">' + themes.map(function (t) {
+        return '<span class="chip hot">' + esc(t) + '</span>';
+      }).join('') + '</div>' : '') +
+      '<p class="stk-foot">涨停类型与涨停原因来自同花顺涨停池；开高低收、成交额、市值来自腾讯证券收盘快照；封单额单位为亿元。' +
+      (has && date !== DATES[2] ? '<br>该股最近一次涨停为 ' + date + '，开高低收仅对最新交易日 ' + DATES[2] + ' 有效。' : '') + '</p>' +
+      '<div class="sheet-actions"><button class="btn ghost" type="button" data-close-sheet>关闭</button></div>' +
+      '</div>', 'tall');
+  }
+
+  function pctClass(open, close) {
+    if (open === null || open === undefined || close === null || close === undefined) return '';
+    return close >= open ? 'up' : 'down';
+  }
+
+  function mmdd(value) {
+    return String(value).slice(5);
   }
 
   function openSectorSettings() {
@@ -1023,6 +1224,18 @@
 
     const cell = event.target.closest('[data-sector]');
     if (cell) { openSector(cell.dataset.sector, cell.dataset.sectorDay); return; }
+
+    const stockBtn = event.target.closest('[data-stock]');
+    if (stockBtn && stockBtn.dataset.stock) {
+      openStock(stockBtn.dataset.stock, { day: stockBtn.dataset.stockDay });
+      return;
+    }
+
+    const sectorTab = event.target.closest('[data-sector-tab]');
+    if (sectorTab) { store.set({ sectorTab: sectorTab.dataset.sectorTab }); refreshSectorDetail(); return; }
+
+    const sectorSort = event.target.closest('[data-sector-sort]');
+    if (sectorSort) { store.set({ sectorSort: sectorSort.dataset.sectorSort }); refreshSectorDetail(); return; }
 
     const closeBtn = event.target.closest('[data-close-sheet]');
     if (closeBtn) { UI.closeSheet(); return; }
@@ -1255,7 +1468,7 @@
             ? '<span class="side-tag ' + row.side.c + '">' + row.side.t + '</span>'
             : '';
           const label = store.get('hideStock') ? '标的 ' + String(++maskIndex).padStart(2, '0') : row.name;
-          return '<tr class="l-row">' +
+          return '<tr class="l-row"' + (store.get('hideStock') ? '' : ' data-stock="' + esc(row.code || '') + '" tabindex="0"') + '>' +
             '<td><div class="l-namebox">' + side + '<span class="l-name">' + label + '</span></div></td>' +
             stateCell(L0, row.d13, activeCol) +
             stateCell(L1, row.d16, activeCol) +
