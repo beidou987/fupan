@@ -565,6 +565,34 @@
   .ladder-table.wide thead th.corner{background:#0f1829;z-index:5}
   .ladder-table.wide td.l-concept{width:130px;min-width:130px;text-align:left;font-size:10.5px}
   .ladder-table.wide tr.ladder-group td.grp{text-align:left}
+  /* 兑换码门禁 */
+  #gateLayer{position:fixed;inset:0;z-index:9990;display:flex;align-items:center;justify-content:center;padding:20px;
+    background:radial-gradient(120% 70% at 50% 0%,rgba(50,78,140,.45),transparent 72%),#05080f}
+  #gateLayer[hidden]{display:none}
+  .gate-card{width:100%;max-width:360px;background:var(--surface);border:1px solid var(--line-strong);border-radius:16px;
+    padding:22px 20px 18px;box-shadow:var(--shadow)}
+  .gate-brand{display:flex;align-items:center;gap:9px;margin-bottom:16px}
+  .gate-mark{width:30px;height:30px;border-radius:8px;background:#fff;color:#0b0e14;font-size:13px;font-weight:800;
+    display:flex;align-items:center;justify-content:center}
+  .gate-brand b{font-size:15px;letter-spacing:.5px}
+  .gate-brand b em{font-style:normal;color:var(--accent-2)}
+  .gate-card h2{margin:0 0 6px;font-size:18px;letter-spacing:.02em}
+  .gate-desc{margin:0 0 14px;color:var(--muted);font-size:12.5px;line-height:1.55}
+  .gate-trial{margin:0 0 14px;color:var(--gold);font-size:12px}
+  .gate-trial[hidden]{display:none}
+  .gate-field{display:block;margin-bottom:12px}
+  .gate-field span{display:block;color:var(--dim);font-size:11.5px;margin-bottom:6px;letter-spacing:.08em}
+  .gate-field input{width:100%;height:42px;padding:0 12px;border-radius:10px;border:1px solid var(--line-strong);
+    background:var(--surface-2);color:var(--text);font-size:15px;letter-spacing:.06em;outline:none}
+  .gate-field input:focus{border-color:var(--accent-2)}
+  .gate-field input::placeholder{color:#4d5a72}
+  .gate-btn{width:100%;height:44px;margin-top:4px;border-radius:10px;color:#fff;font-size:15px;font-weight:600;
+    letter-spacing:.06em;background:linear-gradient(135deg,#6f5be8,#8b7bff)}
+  .gate-btn:disabled{opacity:.6}
+  .gate-msg{min-height:18px;margin:10px 0 0;font-size:12px;color:var(--up);text-align:center}
+  .gate-msg.is-ok{color:var(--down)}
+  .gate-foot{margin:12px 0 0;padding-top:12px;border-top:1px solid var(--line);color:var(--dim);
+    font-size:11px;line-height:1.5;text-align:center}
 </style>
 </head>
 <body>
@@ -932,6 +960,7 @@
   };
 })();
 </script>
+<script src="codes.js"></script>
 <script src="data.js" onerror="document.documentElement.classList.add('is-data-missing')"></script>
 <script>
 (function () {
@@ -2098,6 +2127,139 @@
       });
     }).catch(function () {});
   }
+})();
+</script>
+<div id="gateLayer" hidden>
+  <div class="gate-card" role="dialog" aria-modal="true" aria-labelledby="gateTitle">
+    <div class="gate-brand"><span class="gate-mark" aria-hidden="true">盘</span><b>盘感<em>罗盘</em></b></div>
+    <h2 id="gateTitle">试用已结束</h2>
+    <p class="gate-desc" id="gateDesc">2 天免费试用已到期。输入开通时的手机号与兑换码，验证通过后继续使用。</p>
+    <p class="gate-trial" id="gateTrial" hidden></p>
+    <label class="gate-field"><span>手机号</span><input id="gatePhone" type="tel" inputmode="numeric" maxlength="11" placeholder="11 位手机号" autocomplete="off"></label>
+    <label class="gate-field"><span>兑换码</span><input id="gateCode" type="text" maxlength="20" placeholder="FP-XXXX-XXXX" autocomplete="off" spellcheck="false"></label>
+    <button class="gate-btn" id="gateSubmit" type="button">验证并进入</button>
+    <p class="gate-msg" id="gateMsg" role="status"></p>
+    <p class="gate-foot">一个手机号对应一个兑换码；兑换码到期后需重新开通。</p>
+  </div>
+</div>
+<script>
+/* 试用期与兑换码门禁：完全在浏览器内校验，不发送任何数据 */
+(function () {
+  'use strict';
+  var TRIAL_MS = 2 * 24 * 60 * 60 * 1000;      /* 免费试用 2 天 */
+  var K_TRIAL = 'fupan.trial.v1';
+  var K_LIC = 'fupan.license.v1';
+  var SALT = 'fupan-license-v1|';
+
+  function read(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
+  function write(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
+  function readJSON(k) { try { return JSON.parse(read(k) || 'null'); } catch (e) { return null; } }
+  function pad(n) { return (n < 10 ? '0' : '') + n; }
+  function today() { var d = new Date(); return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); }
+  function normalize(v) { return String(v || '').replace(/[\s\-_]/g, '').toUpperCase(); }
+
+  function sha256(text) {
+    if (!(window.crypto && window.crypto.subtle && window.crypto.subtle.digest)) return Promise.resolve(null);
+    var buf = new TextEncoder().encode(text);
+    return window.crypto.subtle.digest('SHA-256', buf).then(function (out) {
+      return Array.prototype.map.call(new Uint8Array(out), function (b) {
+        return ('0' + b.toString(16)).slice(-2);
+      }).join('');
+    });
+  }
+
+  function findEntry(phone) {
+    var list = window.ACCESS_CODES || [];
+    for (var i = 0; i < list.length; i++) {
+      if (list[i] && list[i].p === phone) return list[i];
+    }
+    return null;
+  }
+
+  function licenseValid(lic) { return !!(lic && lic.p && lic.e && today() <= lic.e); }
+
+  function trialState() {
+    var t = readJSON(K_TRIAL);
+    if (!t || typeof t.first !== 'number') {
+      t = { first: Date.now() };
+      write(K_TRIAL, JSON.stringify(t));
+    }
+    return { left: TRIAL_MS - (Date.now() - t.first) };
+  }
+
+  var layer, phoneEl, codeEl, btn, msgEl;
+
+  function setMsg(text, ok) {
+    if (!msgEl) return;
+    msgEl.textContent = text || '';
+    msgEl.className = 'gate-msg' + (ok ? ' is-ok' : '');
+  }
+
+  function lock(reason) {
+    if (!layer) return;
+    layer.hidden = false;
+    document.body.style.overflow = 'hidden';
+    var title = layer.querySelector('#gateTitle');
+    var desc = layer.querySelector('#gateDesc');
+    if (reason === 'expired') {
+      title.textContent = '兑换码已到期';
+      desc.textContent = '当前兑换码有效期已结束，请用新的手机号与兑换码重新开通。';
+    }
+    setTimeout(function () { if (phoneEl) phoneEl.focus(); }, 80);
+  }
+
+  function unlock(lic, notice) {
+    write(K_LIC, JSON.stringify(lic));
+    if (layer) layer.hidden = true;
+    document.body.style.overflow = '';
+    if (notice && window.UI && window.UI.toast) { try { window.UI.toast(notice); } catch (e) {} }
+  }
+
+  function submit() {
+    var phone = String(phoneEl.value || '').replace(/\D/g, '');
+    var code = normalize(codeEl.value);
+    if (!/^1\d{10}$/.test(phone)) return setMsg('请输入 11 位手机号');
+    if (code.length < 6) return setMsg('请输入兑换码');
+    var entry = findEntry(phone);
+    if (!entry) return setMsg('该手机号尚未开通');
+    btn.disabled = true;
+    setMsg('校验中…', true);
+    sha256(SALT + code).then(function (h) {
+      btn.disabled = false;
+      if (!h) return setMsg('当前浏览器无法校验，请用手机自带浏览器打开');
+      if (h !== String(entry.h).toLowerCase()) return setMsg('兑换码与手机号不匹配');
+      if (today() > entry.e) return setMsg('该兑换码已于 ' + entry.e + ' 到期');
+      setMsg('验证通过，正在进入…', true);
+      setTimeout(function () {
+        unlock({ p: phone, e: entry.e, at: Date.now() }, '已开通，有效期至 ' + entry.e);
+      }, 500);
+    }).catch(function () { btn.disabled = false; setMsg('校验失败，请重试'); });
+  }
+
+  function boot() {
+    layer = document.getElementById('gateLayer');
+    if (!layer) return;
+    phoneEl = layer.querySelector('#gatePhone');
+    codeEl = layer.querySelector('#gateCode');
+    btn = layer.querySelector('#gateSubmit');
+    msgEl = layer.querySelector('#gateMsg');
+
+    codeEl.addEventListener('input', function () {
+      var at = codeEl.selectionStart;
+      codeEl.value = codeEl.value.toUpperCase();
+      try { codeEl.setSelectionRange(at, at); } catch (e) {}
+    });
+    btn.addEventListener('click', submit);
+    layer.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); submit(); } });
+
+    var lic = readJSON(K_LIC);
+    if (licenseValid(lic)) return;
+    if (trialState().left > 0) return;
+    lock(lic ? 'expired' : 'trial-end');
+  }
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
+  else boot();
 })();
 </script>
 </body>
