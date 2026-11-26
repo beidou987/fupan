@@ -1,7 +1,7 @@
 /* 复盘终端 Service Worker
  * 目标：离线可打开；行情数据（data.js / data.json）优先取最新，失败回退缓存。
  */
-const VERSION = 'fupan-v6';
+const VERSION = 'fupan-v7';
 const SHELL = './';
 const ASSETS = [
   './index.html',
