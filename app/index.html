@@ -582,6 +582,7 @@
   .gate-trial[hidden]{display:none}
   .gate-field{display:block;margin-bottom:12px}
   .gate-field[hidden]{display:none}
+  .feed-stamp{color:var(--dim);font-size:10.5px;letter-spacing:.04em;margin:-2px 0 8px}
   .gate-field span{display:block;color:var(--dim);font-size:11.5px;margin-bottom:6px;letter-spacing:.08em}
   .gate-field input{width:100%;height:42px;padding:0 12px;border-radius:10px;border:1px solid var(--line-strong);
     background:var(--surface-2);color:var(--text);font-size:15px;letter-spacing:.06em;outline:none}
@@ -664,6 +665,7 @@
           </div>
         </div>
         <div class="feed-meta"><span id="newsDate">收盘 · 数据加载中</span><span id="newsCount">9 条 · 深度 0 篇</span></div>
+        <div class="feed-stamp" id="feedStamp"></div>
         <div class="scope-row" id="newsScope" role="group" aria-label="消息筛选">
           <div class="seg">
             <button type="button" data-news-scope="all" aria-pressed="true">全部</button>
@@ -2143,6 +2145,15 @@
     <p class="gate-foot" id="gateFoot">手机号仅保存在本机，用于登记与后续开通，不上传服务器。</p>
   </div>
 </div>
+<script>
+/* 数据抓取时间：区分「今天还没收盘所以没新数据」与「定时任务没跑」 */
+(function () {
+  var el = document.getElementById('feedStamp');
+  if (!el) return;
+  var d = window.REAL_DATA || window.APP_DATA || {};
+  if (d.refreshStamp) el.textContent = '数据抓取于 ' + d.refreshStamp + '，每个交易日收盘后自动更新';
+})();
+</script>
 <script>
 /* 门禁：首次进入登记手机号 → 免费试用 2 天 → 到期需手机号 + 兑换码；全部在本机校验，不上传 */
 (function () {
