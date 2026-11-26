@@ -162,8 +162,9 @@
   .rank.plain{background:transparent;color:var(--dim);font-weight:600;box-shadow:none}
 
   /* 悬浮按钮 */
+  .fab[hidden]{display:none}
   .fab{
-    position:fixed;z-index:40;bottom:calc(var(--tabbar-h) + 22px + env(safe-area-inset-bottom));
+    position:fixed;z-index:60;bottom:calc(var(--tabbar-h) + 30px + env(safe-area-inset-bottom));
     right:max(16px,calc(50vw - 264px));
     width:52px;height:52px;border-radius:50%;display:grid;place-items:center;color:#fff;
     background:linear-gradient(160deg,var(--accent-2),#5b48d6);
@@ -464,6 +465,7 @@
   .news-meta{display:flex;align-items:center;gap:8px;margin-top:7px;font-size:10.5px;color:var(--dim);flex-wrap:wrap}
   .news-meta .src.deep{color:#f7d488;border-color:rgba(247,212,136,.55);background:rgba(247,212,136,.10)}
   .news-meta .src.policy{color:#8ab4f8;border-color:rgba(138,180,248,.55);background:rgba(138,180,248,.10)}
+  .news-meta .src.paper{color:#7ed4c3;border-color:rgba(126,212,195,.55);background:rgba(126,212,195,.10)}
   .scope-row{display:flex;align-items:center;gap:8px;margin:0 0 8px;overflow-x:auto;scrollbar-width:none}
   .scope-row::-webkit-scrollbar{display:none}
   .news-item[data-deep="1"]{box-shadow:inset 2px 0 0 rgba(247,212,136,.85)}
@@ -638,13 +640,11 @@
             <button type="button" data-news-scope="feed" aria-pressed="false">快讯</button>
             <button type="button" data-news-scope="deep" aria-pressed="false">深度</button>
             <button type="button" data-news-scope="policy" aria-pressed="false">国家政策</button>
+            <button type="button" data-news-scope="paper" aria-pressed="false">证券报</button>
           </div>
         </div>
         <div class="news-list" id="newsList"></div>
         <p class="feed-foot" id="feedFoot"><strong>数据来源：</strong>消息面取自财联社电报、中国政府网与发改委要闻，深度文章取自陆家嘴金融网（中国金融信息中心）；行情取东方财富、同花顺、腾讯证券公开接口。不构成投资建议。</p>
-        <button class="fab" type="button" data-action="refreshNews" aria-label="刷新消息面">
-          <svg class="icon" aria-hidden="true"><use href="#i-refresh"/></svg>
-        </button>
       </div>
     </section>
 
@@ -742,6 +742,10 @@
     </section>
   </main>
 
+  <button class="fab" id="refreshFab" type="button" data-action="refreshNews" aria-label="刷新消息面">
+    <svg class="icon" aria-hidden="true"><use href="#i-refresh"/></svg>
+  </button>
+
   <nav class="tabbar" aria-label="主导航">
     <button class="tab" type="button" data-view-link="news" aria-selected="true">
       <svg class="icon"><use href="#i-news"/></svg><span>消息面</span>
@@ -821,6 +825,8 @@
       tab.setAttribute('aria-selected', String(tab.dataset.viewLink === name));
     });
     document.title = VIEW_TITLES[name] + ' · 复盘终端';
+    var fabEl = document.getElementById('refreshFab');
+    if (fabEl) fabEl.hidden = name !== 'news';
     window.scrollTo({ top: 0, behavior: 'auto' });
     if (name === 'sectors') {
       window.setTimeout(function () {
@@ -986,6 +992,8 @@
       list = list.filter(function (n) { return !n.deep; });
     } else if (scope === 'policy') {
       list = list.filter(function (n) { return !!n.policy; });
+    } else if (scope === 'paper') {
+      list = list.filter(function (n) { return !!n.paper; });
     }
     const q = store.get('newsQuery').trim().toLowerCase();
     if (!q) return list;
@@ -1007,7 +1015,8 @@
       count.textContent = q
         ? items.length + ' 条 · 搜索“' + q + '”'
         : items.length + ' 条 · ' + (scope === 'deep' ? '陆家嘴深度'
-          : (scope === 'policy' ? '国家政策' : '深度 ' + deepAll + ' 篇'));
+          : (scope === 'policy' ? '国家政策'
+            : (scope === 'paper' ? '证券报' : '深度 ' + deepAll + ' 篇')));
     }
     if (!items.length) {
       list.innerHTML = '<div class="empty" style="border:0;background:none"><strong>没有匹配的消息</strong><span>换个题材、概念或个股关键词试试，例如“芯片”“AI”“储能”。</span></div>';
@@ -1027,6 +1036,7 @@
         '<div class="news-meta">' + (item.source ? '<span class="src">' + esc(item.source) + '</span>' : '') +
         (item.deep ? '<span class="src deep">' + esc(item.col || '深度') + '</span>' : '') +
         (item.policy && !item.deep ? '<span class="src policy">政策</span>' : '') +
+        (item.paper && !item.deep ? '<span class="src paper">' + esc(item.source || '证券报') + '</span>' : '') +
         '<span>' + esc(item.time || '') + '</span></div></div>' +
         '</article>';
     }).join('');
@@ -1047,6 +1057,7 @@
       (item.source ? '<span class="src">' + esc(item.source) + '</span>' : '') +
       (item.deep ? '<span class="src deep">' + esc(item.col || '深度') + '</span>' : '') +
       (item.policy && !item.deep ? '<span class="src policy">政策</span>' : '') +
+      (item.paper && !item.deep ? '<span class="src paper">' + esc(item.source || '证券报') + '</span>' : '') +
       '<span>' + esc(item.time || '') + '</span></div>' +
       (item.url
         ? '<div class="sheet-actions"><a class="btn primary" href="' + esc(item.url) + '" target="_blank" rel="noopener">阅读原文</a>'
@@ -1091,7 +1102,7 @@
     const latest = SD1;
 
     const cols = SECTOR_DATES.map(function (day) {
-      let list = sectorTopOf(day, 7);
+      let list = sectorTopOf(day, 10);
       if (q) {
         list = list.filter(function (x) { return x.row.name.toLowerCase().indexOf(q) !== -1; });
       }
@@ -2041,7 +2052,7 @@
   txt('newsDate', mmdd(d2) + ' 收盘 · 数据截至 ' + mmdd(d2));
   txt('newsCount', D.briefs.length + ' 条 · 深度 ' + D.briefs.filter(function (b) { return b.deep; }).length + ' 篇');
   var sdates = (D.sectorDates || dd);
-  txt('sectorMeta', '板块强度 · 每日涨停家数前 7 名 · 左右滑动看历史');
+  txt('sectorMeta', '板块强度 · 每日涨停家数前 10 名 · 左右滑动看历史');
   txt('sectorNote', '黄色格为最新交易日涨停家数第一的板块；每格为「涨停家数 / 板块涨幅 / 最高连板」，点开看当日涨停股。涨跌家数与细分题材数暂无公开接口，不填假数据。');
   txt('mfNote', '数据为 ' + rng + ' 龙虎榜明细，按个股去重、单位亿元；龙虎榜为盘后公开数据，不构成投资建议。');
   txt('ladderNote', rng + ' 真实涨停梯队；左右滑动查看历史列；筛选数量为 3 日相关个股（含断板），断板组指 ' + dd[0] + ' 涨停且 ' + dd[1] + ' 未涨停。');
