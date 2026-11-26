@@ -187,6 +187,52 @@ def miit_news(days=7, limit=6):
     return out
 
 
+EM_PAPER_COLS = ["347", "350", "353", "357", "359", "346", "345"]
+EM_PAPER_MEDIA = {
+    "证券时报": "证券时报", "证券时报网": "证券时报", "e公司": "证券时报",
+    "上海证券报": "上海证券报", "中国证券报": "中国证券报", "中证网": "中国证券报",
+    "证券日报": "证券日报", "证券日报网": "证券日报",
+    "华尔街日报": "华尔街日报", "华尔街日报中文网": "华尔街日报",
+}
+EM_NEWS_API = "https://np-listapi.eastmoney.com/comm/web/getNewsByColumns"
+
+
+def em_papers(days=2, limit=6):
+    """东财资讯按 mediaName 筛四大证券报稿件：中国证券报与上海证券报只在东财有转载分发。"""
+    since = (datetime.now(CST) - timedelta(days=days)).strftime("%Y-%m-%d")
+    headers = {"User-Agent": UA_PC, "Referer": "https://finance.eastmoney.com/"}
+    seen, out = set(), []
+    for col in EM_PAPER_COLS:
+        params = {"client": "web", "biz": "web_news_col", "column": col, "order": "1",
+                  "needInteractData": "0", "page_index": "1", "page_size": "60", "req_trace": "a"}
+        try:
+            r = requests.get(EM_NEWS_API, params=params, headers=headers, timeout=20)
+            lst = (((r.json().get("data") or {}).get("list")) or [])
+        except Exception as exc:  # noqa: BLE001
+            print("    东财转载列 %s 失败 %s" % (col, exc))
+            continue
+        for it in lst:
+            media = (it.get("mediaName") or "").strip()
+            if media not in EM_PAPER_MEDIA:
+                continue
+            title = _clean(it.get("title") or "")
+            show = (it.get("showTime") or "")[:16]
+            url = it.get("uniqueUrl") or it.get("url") or it.get("infoUrl") or ""
+            if not title or not show or show[:10] < since:
+                continue
+            key = re.sub(r"[^\w\u4e00-\u9fa5]", "", title)[:16]
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append({
+                "source": EM_PAPER_MEDIA[media], "kind": "paper", "level": "",
+                "title": title, "body": "", "time": show, "date": show[:10],
+                "url": url, "subjects": [],
+            })
+    out.sort(key=lambda x: x["time"], reverse=True)
+    return out[:limit]
+
+
 SEC_PAPER_SKIP = ["招聘", "大赛", "论坛", "沙龙", "公益", "广告", "声明", "免责", "版权",
                   "订阅", "登录", "注册", "客户端"]
 
@@ -309,6 +355,8 @@ def _relevant(it, theme_names):
         return False
     if it.get("kind") == "policy" or _is_policy(it):
         return True
+    if it.get("kind") == "paper":
+        return True          # 报纸正文多为评述，未必带 K 线词，按来源放行
     if _is_stock_notice(it["title"]):
         return False
     if it.get("stock_list"):
@@ -718,8 +766,7 @@ def collect(theme_names, limit=12, days=3, deep_limit=4):
         print("    陆家嘴深度失败 %s" % exc)
     for name, fn in (("财联社", cls_telegraph), ("新浪财经", sina_7x24), ("同花顺快讯", ths_news),
                      ("中国政府网", gov_yaowen), ("国家发展改革委", ndrc_news),
-                     ("工业和信息化部", miit_news), ("证券时报", stcn_news),
-                     ("证券日报", zqrb_news)):
+                     ("工业和信息化部", miit_news), ("东财转载报纸", em_papers)):
         try:
             got = fn()
             items.extend(got)
@@ -777,7 +824,22 @@ def collect(theme_names, limit=12, days=3, deep_limit=4):
     for it in policies:
         picked.append(it)
         per_src[it.get("source") or ""] = per_src.get(it.get("source") or "", 0) + 1
-    papers = [x for x in tagged if x.get("paper")][:3]      # 证券报保底 3 条
+    # 证券报：先保证每家报纸各 1 条，再回填，避免同一家刷屏
+    paper_all = [x for x in tagged if x.get("paper")]
+    papers, seen_paper = [], {}
+    for x in paper_all:
+        src = x.get("source") or ""
+        if seen_paper.get(src):
+            continue
+        seen_paper[src] = 1
+        papers.append(x)
+        if len(papers) >= 4:
+            break
+    for x in paper_all:
+        if len(papers) >= 4:
+            break
+        if x not in papers:
+            papers.append(x)
     for it in papers:
         if it in policies or len(picked) >= feed_limit:
             continue
