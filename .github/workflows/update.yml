@@ -8,6 +8,11 @@ on:
     - cron: '10 7 * * 1-5'
     - cron: '40 9 * * 1-5'
   workflow_dispatch:
+  # 改动 app/（例如 app/codes.js 码表、页面）时自动重新发布，不重跑抓数
+  push:
+    branches: [main]
+    paths:
+      - 'app/**'
 
 permissions:
   contents: write
@@ -36,12 +41,15 @@ jobs:
         run: pip install --quiet requests
 
       - name: 更新 30 天历史
+        if: github.event_name != 'push'
         run: python scripts/fetch_history.py
 
       - name: 抓取并构建数据
+        if: github.event_name != 'push'
         run: python scripts/market_update.py
 
       - name: 提交数据到 main
+        if: github.event_name != 'push'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
