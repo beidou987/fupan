@@ -187,6 +187,68 @@ def miit_news(days=7, limit=6):
     return out
 
 
+SEC_PAPER_SKIP = ["招聘", "大赛", "论坛", "沙龙", "公益", "广告", "声明", "免责", "版权",
+                  "订阅", "登录", "注册", "客户端"]
+
+
+def stcn_news(days=3, limit=4):
+    """证券时报（人民日报社主管）：首页要闻早已倒序，逐篇取正文发布时间。"""
+    r = requests.get("https://www.stcn.com/", headers={"User-Agent": UA_PC}, timeout=25, verify=False)
+    r.encoding = r.apparent_encoding or "utf-8"
+    seen, cands = set(), []
+    for href, inner in re.findall(r'<a[^>]+href="(/article/detail/\d+\.html)"[^>]*>\s*([^<]{10,90})\s*</a>', r.text):
+        title = _clean(inner)
+        if not title or any(w in title for w in SEC_PAPER_SKIP):
+            continue
+        if href in seen:
+            continue
+        seen.add(href)
+        cands.append({"title": title, "url": "https://www.stcn.com" + href})
+        if len(cands) >= limit * 3:
+            break
+    since = (datetime.now(CST) - timedelta(days=days)).strftime("%Y-%m-%d")
+    out = []
+    for c in cands:
+        if len(out) >= limit:
+            break
+        try:
+            d = requests.get(c["url"], headers={"User-Agent": UA_PC}, timeout=20, verify=False)
+            d.encoding = d.apparent_encoding or "utf-8"
+            pub = _pub_time(d.text, since)
+        except Exception:  # noqa: BLE001
+            pub = ""
+        if not pub or pub[:10] < since:
+            continue
+        out.append({
+            "source": "证券时报", "kind": "paper", "level": "",
+            "title": c["title"], "body": "", "time": pub, "date": pub[:10],
+            "url": c["url"], "subjects": [],
+        })
+    return out
+
+
+def zqrb_news(days=3, limit=4):
+    """证券日报（经济日报主办）：列表链接自带 yyyy-mm-dd 日期路径，无需抓正文。"""
+    r = requests.get("http://www.zqrb.cn/", headers={"User-Agent": UA_PC}, timeout=25, verify=False)
+    r.encoding = r.apparent_encoding or "utf-8"
+    since = (datetime.now(CST) - timedelta(days=days)).strftime("%Y-%m-%d")
+    seen, out = set(), []
+    for href, day, title in re.findall(
+            r'href="(http://www\.zqrb\.cn/[^"]*?/(20\d{2}-\d{2}-\d{2})/[^"]+)"[^>]*>\s*([^<]{8,90})\s*</a>', r.text):
+        title = _clean(title)
+        if day < since or not title or any(w in title for w in SEC_PAPER_SKIP) or href in seen:
+            continue
+        seen.add(href)
+        out.append({
+            "source": "证券日报", "kind": "paper", "level": "",
+            "title": title, "body": "", "time": day + " 08:00", "date": day,
+            "url": href, "subjects": [],
+        })
+        if len(out) >= limit:
+            break
+    return out
+
+
 def _is_policy(it):
     if it.get("kind") == "policy":
         return True
@@ -642,7 +704,7 @@ def ndrc_news(days=4):
     return out
 
 
-def collect(theme_names, limit=9, days=3, deep_limit=4):
+def collect(theme_names, limit=12, days=3, deep_limit=4):
     """合并快讯与深度文章：陆家嘴深度置顶并标记，快讯按影响力随后。
 
     宁缺毋滥：没有板块指向的消息、个股公告类消息一律丢弃，不为了凑条数留在列表里。
@@ -656,7 +718,8 @@ def collect(theme_names, limit=9, days=3, deep_limit=4):
         print("    陆家嘴深度失败 %s" % exc)
     for name, fn in (("财联社", cls_telegraph), ("新浪财经", sina_7x24), ("同花顺快讯", ths_news),
                      ("中国政府网", gov_yaowen), ("国家发展改革委", ndrc_news),
-                     ("工业和信息化部", miit_news)):
+                     ("工业和信息化部", miit_news), ("证券时报", stcn_news),
+                     ("证券日报", zqrb_news)):
         try:
             got = fn()
             items.extend(got)
@@ -681,12 +744,17 @@ def collect(theme_names, limit=9, days=3, deep_limit=4):
     for it in items:
         it["tags"] = _tags_from(it["title"], it["body"], theme_names)
         it["policy"] = _is_policy(it)
+        it["paper"] = it.get("kind") == "paper"
         it["score"] = _score(it["kind"], it["level"], it["title"], it["body"])
         it["score"] += 2 * min(4, len(it["tags"]))
         if it["policy"]:
             it["score"] += 8          # 政策消息优先级最高
             if not it["tags"]:
                 it["tags"] = ["政策"]  # 政策本身没有对应板块时，保留政策标签
+        if it["paper"]:
+            it["score"] += 6          # 四大证券报次之
+            if not it["tags"]:
+                it["tags"] = ["证券报"]
 
     # 同题去重：标题前 12 字相同视为同一条
     seen, uniq = set(), []
@@ -709,10 +777,18 @@ def collect(theme_names, limit=9, days=3, deep_limit=4):
     for it in policies:
         picked.append(it)
         per_src[it.get("source") or ""] = per_src.get(it.get("source") or "", 0) + 1
+    papers = [x for x in tagged if x.get("paper")][:3]      # 证券报保底 3 条
+    for it in papers:
+        if it in policies or len(picked) >= feed_limit:
+            continue
+        picked.append(it)
+        per_src[it.get("source") or ""] = per_src.get(it.get("source") or "", 0) + 1
     for it in tagged:
         if len(picked) >= feed_limit:
             break
         if it.get("policy") and it in policies:
+            continue
+        if it.get("paper") and it in papers:
             continue
         src = it.get("source") or ""
         if per_src.get(src, 0) >= 3:
