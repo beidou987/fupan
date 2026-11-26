@@ -1,10 +1,11 @@
 /* 盘感罗盘 Service Worker
  * 目标：离线可打开；行情数据（data.js / data.json）优先取最新，失败回退缓存。
  */
-const VERSION = 'fupan-v8';
+const VERSION = 'fupan-v9';
 const SHELL = './';
 const ASSETS = [
   './index.html',
+  './codes.js',
   './manifest.webmanifest',
   './icons/icon-192.png',
   './icons/icon-512.png',
@@ -28,6 +29,7 @@ self.addEventListener('activate', (event) => {
 });
 
 function isData(url) {
+  if (/(^|\/)codes\.js(\?|$)/.test(url.pathname + url.search)) return true;
   return /\/data\.(js|json)(\?|$)/.test(url.pathname + url.search) ||
          /\/(data-[\w.-]+)\.(js|json)(\?|$)/.test(url.pathname);
 }
