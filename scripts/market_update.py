@@ -718,6 +718,7 @@ def build(dates, raw):
                 "deep": bool(it.get("deep")),
                 "col": it.get("col") or "",
                 "policy": bool(it.get("policy")),
+                "paper": bool(it.get("paper")),
             })
     if not briefs:
         DEGRADED.append("消息面新闻源不可用，回退收盘行情速览")
