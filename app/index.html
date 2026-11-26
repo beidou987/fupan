@@ -581,6 +581,7 @@
   .gate-trial{margin:0 0 14px;color:var(--gold);font-size:12px}
   .gate-trial[hidden]{display:none}
   .gate-field{display:block;margin-bottom:12px}
+  .gate-field[hidden]{display:none}
   .gate-field span{display:block;color:var(--dim);font-size:11.5px;margin-bottom:6px;letter-spacing:.08em}
   .gate-field input{width:100%;height:42px;padding:0 12px;border-radius:10px;border:1px solid var(--line-strong);
     background:var(--surface-2);color:var(--text);font-size:15px;letter-spacing:.06em;outline:none}
@@ -1844,7 +1845,7 @@
           (item.state ? '<span class="me-state' + (item.on ? ' on' : '') + '">' + item.state + '</span>' : '<svg class="icon chev" aria-hidden="true"><use href="#i-chevron"/></svg>') +
           '</button></li>';
       }).join('') + '</ul>' +
-      '<p class="me-footer"><strong>盘感罗盘 · 消息定方向，梯队看高度</strong><br>行情覆盖 ' + window.REAL_DATA.dates[0].slice(5) + ' 至 ' + window.REAL_DATA.dates[2].slice(5) + '，每个交易日收盘后自动更新；<br>不采集账号、位置或通讯录信息。</p>';
+      '<p class="me-footer"><strong>盘感罗盘 · 消息定方向，梯队看高度</strong><br>行情覆盖 ' + window.REAL_DATA.dates[0].slice(5) + ' 至 ' + window.REAL_DATA.dates[2].slice(5) + '，每个交易日收盘后自动更新；<br>手机号仅存本机、不上传；不采集位置与通讯录。</p>';
   }
 
   /* ---------------- 抽屉 ---------------- */
@@ -2132,24 +2133,26 @@
 <div id="gateLayer" hidden>
   <div class="gate-card" role="dialog" aria-modal="true" aria-labelledby="gateTitle">
     <div class="gate-brand"><span class="gate-mark" aria-hidden="true">盘</span><b>盘感<em>罗盘</em></b></div>
-    <h2 id="gateTitle">试用已结束</h2>
-    <p class="gate-desc" id="gateDesc">2 天免费试用已到期。输入开通时的手机号与兑换码，验证通过后继续使用。</p>
+    <h2 id="gateTitle">输入手机号</h2>
+    <p class="gate-desc" id="gateDesc">登记手机号后即可使用，免费试用 2 天。</p>
     <p class="gate-trial" id="gateTrial" hidden></p>
-    <label class="gate-field"><span>手机号</span><input id="gatePhone" type="tel" inputmode="numeric" maxlength="11" placeholder="11 位手机号" autocomplete="off"></label>
-    <label class="gate-field"><span>兑换码</span><input id="gateCode" type="text" maxlength="20" placeholder="FP-XXXX-XXXX" autocomplete="off" spellcheck="false"></label>
-    <button class="gate-btn" id="gateSubmit" type="button">验证并进入</button>
+    <label class="gate-field" id="gatePhoneField"><span>手机号</span><input id="gatePhone" type="tel" inputmode="numeric" maxlength="11" placeholder="11 位手机号" autocomplete="off"></label>
+    <label class="gate-field" id="gateCodeField" hidden><span>兑换码</span><input id="gateCode" type="text" maxlength="20" placeholder="FP-XXXX-XXXX" autocomplete="off" spellcheck="false"></label>
+    <button class="gate-btn" id="gateSubmit" type="button">开始使用</button>
     <p class="gate-msg" id="gateMsg" role="status"></p>
-    <p class="gate-foot">一个手机号对应一个兑换码；兑换码到期后需重新开通。</p>
+    <p class="gate-foot" id="gateFoot">手机号仅保存在本机，用于登记与后续开通，不上传服务器。</p>
   </div>
 </div>
 <script>
-/* 试用期与兑换码门禁：完全在浏览器内校验，不发送任何数据 */
+/* 门禁：首次进入登记手机号 → 免费试用 2 天 → 到期需手机号 + 兑换码；全部在本机校验，不上传 */
 (function () {
   'use strict';
-  var TRIAL_MS = 2 * 24 * 60 * 60 * 1000;      /* 免费试用 2 天 */
+  var TRIAL_MS = 2 * 24 * 60 * 60 * 1000;
   var K_TRIAL = 'fupan.trial.v1';
+  var K_REG = 'fupan.reg.v1';
   var K_LIC = 'fupan.license.v1';
   var SALT = 'fupan-license-v1|';
+  var PHONE_RE = /^1[3-9]\d{9}$/;
 
   function read(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
   function write(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
@@ -2187,7 +2190,8 @@
     return { left: TRIAL_MS - (Date.now() - t.first) };
   }
 
-  var layer, phoneEl, codeEl, btn, msgEl;
+  var layer, phoneEl, codeEl, codeField, btn, msgEl, titleEl, descEl, footEl;
+  var step = 'phone';
 
   function setMsg(text, ok) {
     if (!msgEl) return;
@@ -2195,30 +2199,65 @@
     msgEl.className = 'gate-msg' + (ok ? ' is-ok' : '');
   }
 
-  function lock(reason) {
-    if (!layer) return;
+  function setStep(mode) {
+    step = mode;
+    if (mode === 'phone') {
+      titleEl.textContent = '输入手机号';
+      descEl.textContent = '登记手机号后即可使用，免费试用 2 天。';
+      codeField.hidden = true;
+      btn.textContent = '开始使用';
+      footEl.textContent = '手机号仅保存在本机，用于登记与后续开通，不上传服务器。';
+    } else {
+      titleEl.textContent = (mode === 'expired') ? '兑换码已到期' : '试用已结束';
+      descEl.textContent = (mode === 'expired')
+        ? '当前兑换码有效期已结束，请用新的手机号与兑换码重新开通。'
+        : '2 天免费试用已到期。输入开通时的手机号与兑换码，验证通过后继续使用。';
+      codeField.hidden = false;
+      btn.textContent = '验证并进入';
+      footEl.textContent = '一个手机号对应一个兑换码；兑换码到期后需重新开通。';
+    }
+    setMsg('');
+  }
+
+  function show() {
     layer.hidden = false;
     document.body.style.overflow = 'hidden';
-    var title = layer.querySelector('#gateTitle');
-    var desc = layer.querySelector('#gateDesc');
-    if (reason === 'expired') {
-      title.textContent = '兑换码已到期';
-      desc.textContent = '当前兑换码有效期已结束，请用新的手机号与兑换码重新开通。';
-    }
-    setTimeout(function () { if (phoneEl) phoneEl.focus(); }, 80);
+    setTimeout(function () { try { phoneEl.focus(); } catch (e) {} }, 80);
+  }
+
+  function hide() {
+    layer.hidden = true;
+    document.body.style.overflow = '';
+  }
+
+  function lock(mode) {
+    var reg = readJSON(K_REG);
+    if (reg && reg.p) phoneEl.value = reg.p;
+    setStep(mode);
+    show();
   }
 
   function unlock(lic, notice) {
     write(K_LIC, JSON.stringify(lic));
-    if (layer) layer.hidden = true;
-    document.body.style.overflow = '';
+    hide();
     if (notice && window.UI && window.UI.toast) { try { window.UI.toast(notice); } catch (e) {} }
   }
 
   function submit() {
     var phone = String(phoneEl.value || '').replace(/\D/g, '');
+    if (!PHONE_RE.test(phone)) return setMsg('请输入正确的 11 位手机号');
+
+    if (step === 'phone') {
+      write(K_REG, JSON.stringify({ p: phone, at: Date.now() }));
+      if (trialState().left > 0) {
+        hide();
+        if (window.UI && window.UI.toast) { try { window.UI.toast('已登记，免费试用 2 天'); } catch (e) {} }
+        return;
+      }
+      return lock('trial-end');
+    }
+
     var code = normalize(codeEl.value);
-    if (!/^1\d{10}$/.test(phone)) return setMsg('请输入 11 位手机号');
     if (code.length < 6) return setMsg('请输入兑换码');
     var entry = findEntry(phone);
     if (!entry) return setMsg('该手机号尚未开通');
@@ -2241,8 +2280,12 @@
     if (!layer) return;
     phoneEl = layer.querySelector('#gatePhone');
     codeEl = layer.querySelector('#gateCode');
+    codeField = layer.querySelector('#gateCodeField');
     btn = layer.querySelector('#gateSubmit');
     msgEl = layer.querySelector('#gateMsg');
+    titleEl = layer.querySelector('#gateTitle');
+    descEl = layer.querySelector('#gateDesc');
+    footEl = layer.querySelector('#gateFoot');
 
     codeEl.addEventListener('input', function () {
       var at = codeEl.selectionStart;
@@ -2254,7 +2297,10 @@
 
     var lic = readJSON(K_LIC);
     if (licenseValid(lic)) return;
-    if (trialState().left > 0) return;
+    var st = trialState();
+    var reg = readJSON(K_REG);
+    if (!reg || !reg.p) { lock('phone'); return; }
+    if (st.left > 0) return;
     lock(lic ? 'expired' : 'trial-end');
   }
 
