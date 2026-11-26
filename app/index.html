@@ -3,9 +3,9 @@
 <head>
 <meta charset="UTF-8">
 <meta name="theme-color" content="#0b0e14">
-<meta name="application-name" content="复盘终端">
+<meta name="application-name" content="盘感罗盘">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="复盘终端">
+<meta name="apple-mobile-web-app-title" content="盘感罗盘">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
@@ -13,7 +13,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#070d19">
 <meta name="description" content="移动端股票复盘工具：消息面、题材轮动、资金大数据、连板梯队与个人复盘。每日收盘后自动更新。">
-<title>复盘终端 · 股票复盘</title>
+<title>盘感罗盘 · 股票复盘</title>
 <style>
   :root{
     --bg:#05080f;
@@ -455,6 +455,7 @@
 /* ---- PWA ---- */
 #bootSplash{position:fixed;inset:0;z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;background:#0b0e14;color:#8b95a5;font-size:13px;letter-spacing:.06em}
 #bootSplash b{color:#e8edf5;font-size:20px;letter-spacing:.18em}
+#bootSplash .splash-tag{font-style:normal;color:#5c6a80;font-size:11px;letter-spacing:.12em}
 #bootSplash i{display:block;width:26px;height:26px;border-radius:50%;border:2px solid #2a3444;border-top-color:#e2544c;animation:bootspin .8s linear infinite}
 @keyframes bootspin{to{transform:rotate(360deg)}}
 .is-ready #bootSplash{display:none}
@@ -567,7 +568,7 @@
 </style>
 </head>
 <body>
-<div id="bootSplash"><b>复盘终端</b><i></i><span>正在载入行情数据</span></div>
+<div id="bootSplash"><b>盘感罗盘</b><i></i><span>正在载入行情数据</span><em class="splash-tag">消息定方向，梯队看高度</em></div>
 
 <svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
   <defs>
@@ -627,7 +628,7 @@
       <div class="view-body" id="newsBody">
         <div class="brand-row">
           <div class="brand-mark" aria-hidden="true">盘</div>
-          <div class="brand-name">复盘<em>终端</em></div>
+          <div class="brand-name">盘感<em>罗盘</em></div>
           <div class="searchbar">
             <svg class="icon" aria-hidden="true"><use href="#i-search"/></svg>
             <input id="newsSearch" type="search" autocomplete="off" placeholder="题材、概念、个股、消息" aria-label="搜索消息面">
@@ -661,7 +662,7 @@
       <div class="view-body" id="sectorsBody">
         <div class="brand-row">
           <div class="brand-mark" aria-hidden="true">盘</div>
-          <div class="brand-name">复盘<em>终端</em></div>
+          <div class="brand-name">盘感<em>罗盘</em></div>
           <div class="searchbar">
             <svg class="icon" aria-hidden="true"><use href="#i-search"/></svg>
             <input id="sectorSearch" type="search" autocomplete="off" placeholder="概念题材、细分题材、个股信息" aria-label="搜索板块">
@@ -824,7 +825,7 @@
     tabs.forEach(function (tab) {
       tab.setAttribute('aria-selected', String(tab.dataset.viewLink === name));
     });
-    document.title = VIEW_TITLES[name] + ' · 复盘终端';
+    document.title = VIEW_TITLES[name] + ' · 盘感罗盘';
     var fabEl = document.getElementById('refreshFab');
     if (fabEl) fabEl.hidden = name !== 'news';
     window.scrollTo({ top: 0, behavior: 'auto' });
@@ -1814,12 +1815,12 @@
           (item.state ? '<span class="me-state' + (item.on ? ' on' : '') + '">' + item.state + '</span>' : '<svg class="icon chev" aria-hidden="true"><use href="#i-chevron"/></svg>') +
           '</button></li>';
       }).join('') + '</ul>' +
-      '<p class="me-footer"><strong>复盘终端 · 每日更新版</strong><br>行情覆盖 ' + window.REAL_DATA.dates[0].slice(5) + ' 至 ' + window.REAL_DATA.dates[2].slice(5) + '，每个交易日收盘后自动更新；<br>不采集账号、位置或通讯录信息。</p>';
+      '<p class="me-footer"><strong>盘感罗盘 · 消息定方向，梯队看高度</strong><br>行情覆盖 ' + window.REAL_DATA.dates[0].slice(5) + ' 至 ' + window.REAL_DATA.dates[2].slice(5) + '，每个交易日收盘后自动更新；<br>不采集账号、位置或通讯录信息。</p>';
   }
 
   /* ---------------- 抽屉 ---------------- */
   function openLogin() {
-    UI.openSheet('登录复盘终端',
+    UI.openSheet('登录盘感罗盘',
       '<p class="sheet-copy">演示登录用于展示会员中心状态，不接入真实账号体系，也不会保存密码。</p>' +
       '<label class="field-label" for="nickInput">昵称</label>' +
       '<input class="field-input" id="nickInput" maxlength="12" autocomplete="off" placeholder="例如：盘后复盘">' +
@@ -1854,7 +1855,7 @@
   function openShare() {
     UI.openSheet('App 分享',
       '<p class="sheet-copy">演示环境不调用系统分享或剪贴板，可选中下面这段文字手动复制：</p>' +
-      '<p class="sheet-copy" style="margin-top:12px;padding:12px;border:1px dashed var(--line-strong);border-radius:10px;user-select:all">复盘终端 · ' + window.REAL_DATA.dates[0].slice(5) + ' 至 ' + window.REAL_DATA.dates[2].slice(5) + ' 复盘：盘后速览 ' + window.REAL_DATA.briefs.length + ' 条｜主题板块 ' + window.REAL_DATA.sectorRows.length + ' 个｜龙虎榜净买入 TOP10｜涨停梯队 ' + window.REAL_DATA.ladder.groups.reduce(function (n, g) { return n + g.rows.length; }, 0) + ' 只</p>' +
+      '<p class="sheet-copy" style="margin-top:12px;padding:12px;border:1px dashed var(--line-strong);border-radius:10px;user-select:all">盘感罗盘 · ' + window.REAL_DATA.dates[0].slice(5) + ' 至 ' + window.REAL_DATA.dates[2].slice(5) + ' 复盘：盘后速览 ' + window.REAL_DATA.briefs.length + ' 条｜主题板块 ' + window.REAL_DATA.sectorRows.length + ' 个｜龙虎榜净买入 TOP10｜涨停梯队 ' + window.REAL_DATA.ladder.groups.reduce(function (n, g) { return n + g.rows.length; }, 0) + ' 只</p>' +
       '<p class="field-hint">分享内容仅包含历史行情摘要，不含账号或个人持仓。</p>' +
       '<div class="sheet-actions"><button class="btn ghost" type="button" data-close-sheet>关闭</button></div>');
   }
@@ -1870,7 +1871,7 @@
 
   function openAbout() {
     UI.openSheet('关于我们',
-      '<p class="sheet-copy">复盘终端是一个移动端股票复盘工具，把收盘后的消息面、题材强度、龙虎榜与连板梯队放在同一条复盘链路里。</p>' +
+      '<p class="sheet-copy">盘感罗盘是一个移动端股票复盘工具，把收盘后的消息面、题材强度、龙虎榜与连板梯队放在同一条复盘链路里。</p>' +
       '<p class="sheet-copy" style="margin-top:10px">当前版本为可安装的 PWA：每个交易日收盘后由服务端定时抓取东方财富指数日线、涨停池、概念板块日线与龙虎榜并写入站点；不采集账号与持仓，不执行交易。</p>' +
       '<p class="sheet-copy" style="margin-top:10px;color:var(--dim);font-size:12px">设计参考公开截图的版式与信息密度，未复制其品牌标识、文案或资产。</p>' +
       '<div class="sheet-actions"><button class="btn ghost" type="button" data-close-sheet>关闭</button></div>');
